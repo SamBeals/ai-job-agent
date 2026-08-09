@@ -1,0 +1,93 @@
+{
+  "personal": {
+    "full_name": "Alex Example",
+    "email": "alex.example@email.com",
+    "phone": "+1-555-0100",
+    "location": "Seattle, WA",
+    "linkedin_url": "https://linkedin.com/in/alexexample",
+    "github_url": "https://github.com/alexexample",
+    "portfolio_url": "https://alexexample.dev"
+  },
+  "target_roles": [
+    "Senior Software Engineer",
+    "Staff Backend Engineer",
+    "Platform Engineer"
+  ],
+  "summary": "Backend-focused software engineer with experience building distributed systems in Java and cloud-native environments.",
+  "work_history": [
+    {
+      "employer": "Example Tech Inc.",
+      "title": "Senior Software Engineer",
+      "location": "Seattle, WA",
+      "start_date": "2021-03",
+      "end_date": null,
+      "is_current": true,
+      "verified_accomplishments": [
+        "Designed and operated Spring Boot microservices serving 50M+ monthly requests",
+        "Led migration of batch workloads to Kubernetes on AWS",
+        "Mentored 4 engineers on API design and observability practices"
+      ],
+      "technologies": ["Java", "Spring Boot", "AWS", "Kubernetes", "PostgreSQL"]
+    },
+    {
+      "employer": "Prior Systems LLC",
+      "title": "Software Engineer",
+      "location": "Portland, OR",
+      "start_date": "2018-06",
+      "end_date": "2021-02",
+      "is_current": false,
+      "verified_accomplishments": [
+        "Built REST APIs for order processing with 99.9% uptime SLO",
+        "Reduced p95 API latency by 35% through query and cache improvements"
+      ],
+      "technologies": ["Java", "Spring", "MySQL", "Redis"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "State University",
+      "degree": "B.S. Computer Science",
+      "location": "USA",
+      "graduation_date": "2018-05",
+      "details": []
+    }
+  ],
+  "skills": {
+    "languages": ["Java", "Python", "SQL"],
+    "frameworks": ["Spring Boot", "Spring Security"],
+    "cloud_and_infra": ["AWS", "Kubernetes", "Docker"],
+    "data": ["PostgreSQL", "Redis"],
+    "practices": ["CI/CD", "Observability", "API design"]
+  },
+  "certifications": [
+    {
+      "name": "AWS Certified Developer – Associate",
+      "issuer": "Amazon Web Services",
+      "date_earned": "2023-04",
+      "credential_id": "EXAMPLE-CERT-001"
+    }
+  ],
+  "projects": [
+    {
+      "name": "Open Source Job Tracker",
+      "description": "Personal CLI for tracking applications and interview notes",
+      "technologies": ["Python", "SQLite"],
+      "url": "https://github.com/alexexample/job-tracker",
+      "verified_outcomes": ["Used personally to track 100+ applications"]
+    }
+  ],
+  "job_preferences": {
+    "remote": "required",
+    "locations_ok": ["Seattle, WA", "Remote US"],
+    "salary_min": 150000,
+    "salary_currency": "USD",
+    "employment_types": ["full_time"],
+    "company_sizes": ["startup", "mid", "enterprise"],
+    "avoid": ["on-site only roles outside Seattle"]
+  },
+  "_documentation": {
+    "authoritative_source": true,
+    "resume_agent_rule": "The Resume Agent may select, reorder, summarize, and rephrase verified facts from this profile, but may NEVER invent skills, experience, employers, dates, certifications, education, metrics, or accomplishments.",
+    "note": "Replace this example with your real verified career facts before Phase 2 resume generation."
+  }
+}

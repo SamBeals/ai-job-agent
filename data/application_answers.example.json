@@ -1,0 +1,35 @@
+{
+  "work_authorization": {
+    "authorized_to_work_in_us": true,
+    "requires_sponsorship_now_or_future": false,
+    "notes": "Example values only — update before real applications."
+  },
+  "relocation": {
+    "willing_to_relocate": false,
+    "preferred_locations": ["Seattle, WA", "Remote US"]
+  },
+  "work_arrangement": {
+    "desired": "remote",
+    "acceptable": ["remote", "hybrid_seattle"]
+  },
+  "availability": {
+    "earliest_start": "2_weeks_notice",
+    "notice_period_days": 14
+  },
+  "compensation": {
+    "desired_salary_min": 150000,
+    "currency": "USD",
+    "open_to_discussion": true
+  },
+  "recurring_yes_no": {
+    "over_18": true,
+    "able_to_pass_background_check": true,
+    "willing_to_submit_to_drug_test_if_required": null
+  },
+  "_documentation": {
+    "purpose": "Structured answers for recurring employer application questions.",
+    "unknown_question_policy": "If the Applicant Agent encounters a question not covered here (or marked null/unknown), it must pause and set job status to NEEDS_USER rather than guessing.",
+    "privacy": "Do NOT store demographic or other sensitive protected-class answers in this file. Handle those only via explicit user input when required.",
+    "note": "Example values only. Review and edit before any real application submission."
+  }
+}

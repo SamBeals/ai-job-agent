@@ -1,0 +1,41 @@
+{
+  "external_id": "fixture-g-calibration-software-engineer",
+  "source": "fixture",
+  "source_url": "https://example.com/jobs/software-engineer-remote-calibration",
+  "company": "Horizon Platforms",
+  "title": "Software Engineer",
+  "location": "Remote - United States",
+  "remote_status": "remote",
+  "employment_type": "full_time",
+  "salary_min": null,
+  "salary_max": null,
+  "salary_currency": "USD",
+  "description": "Horizon Platforms is hiring a Software Engineer to build and evolve backend services that power customer-facing product workflows. This is a remote role for engineers who enjoy service ownership, API design, and cloud-native delivery.\n\nYou will collaborate with product and platform partners to design reliable services, improve observability, and ship incremental improvements. The team values clear interfaces, pragmatic engineering judgment, and careful production changes.\n\nOur services commonly involve object-oriented backend languages, HTTP APIs, relational data, and cloud infrastructure. Mentions of adjacent technologies in our stack description are contextual and do not all represent hard requirements.\n\nCompensation is competitive and based on experience; a specific salary range is not listed in this posting.",
+  "responsibilities": [
+    "Design, implement, and maintain backend services and APIs",
+    "Collaborate on service reliability, testing, and production readiness",
+    "Participate in code reviews and technical design discussions",
+    "Work with cloud infrastructure and containerized deployments",
+    "Improve observability, operational runbooks, and incident response practices"
+  ],
+  "required_skills": [
+    "Java",
+    "REST APIs",
+    "SQL",
+    "object-oriented programming"
+  ],
+  "preferred_skills": [
+    "Spring Boot",
+    "AWS",
+    "Kubernetes",
+    "Terraform",
+    "Kafka",
+    "Go"
+  ],
+  "required_years_experience": 4,
+  "education_requirements": [
+    "Bachelor's degree in Computer Science or equivalent practical experience"
+  ],
+  "seniority": "mid",
+  "industry": "software"
+}

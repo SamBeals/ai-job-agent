@@ -12,11 +12,12 @@ from app.agents.scout.ingestion import (
     IngestionError,
     JobIngestionService,
 )
+from app.agents.scout.llm.factory import LLMUnavailableError
 from app.agents.scout.pipeline import ScoutEvaluationError, ScoutPipeline
 from app.agents.scout.profile_loader import CandidateProfileError, load_candidate_profile
 from app.config import Settings
 from app.database.database import SessionLocal
-from app.discord.embeds import scout_evaluation_embed
+from app.discord.embeds import scout_evaluation_embed, scout_evaluation_failed_embed
 from app.discord.views import JobActionView
 from app.models.job import JobStatus
 
@@ -189,6 +190,8 @@ async def run_scout_ingestion(
                 profile,
                 persist=True,
                 create_job_record=True,
+                source_content_partial=extraction.partial_content,
+                extraction_confidence=extraction.extraction_confidence.value,
             )
             session.commit()
             if result.job is None:
@@ -214,6 +217,8 @@ async def run_scout_ingestion(
                     f"**Scout evaluation** (`{source_label}`)\n"
                     f"Extraction: `{extraction.extraction_method.value}` "
                     f"/ confidence `{extraction.extraction_confidence.value}`\n"
+                    f"Evaluator: `{result.evaluation.evaluator_provider}` "
+                    f"/ `{result.evaluation.evaluator_model or 'n/a'}`\n"
                     f"Present to user: `{result.should_present}`\n"
                     "Scout recommendation is **not** authorization. "
                     "Only **APPROVE** authorizes this exact job."
@@ -228,7 +233,21 @@ async def run_scout_ingestion(
     except CandidateProfileError as exc:
         await interaction.followup.send(f"Candidate profile error: {exc}", ephemeral=True)
     except ScoutEvaluationError as exc:
-        await interaction.followup.send(f"Scout evaluation failed safely: {exc}", ephemeral=True)
+        logger.exception("scout evaluation failed for Discord ingestion")
+        await interaction.followup.send(
+            embed=scout_evaluation_failed_embed(
+                detail="Configured evaluator failed. No recommendation was generated."
+            ),
+            ephemeral=True,
+        )
+    except LLMUnavailableError as exc:
+        logger.exception("scout LLM provider unavailable")
+        await interaction.followup.send(
+            embed=scout_evaluation_failed_embed(
+                detail=str(exc),
+            ),
+            ephemeral=True,
+        )
     except Exception:  # noqa: BLE001
         logger.exception("Unexpected scout ingestion failure")
         await interaction.followup.send(

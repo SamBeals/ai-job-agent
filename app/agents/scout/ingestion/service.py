@@ -31,6 +31,10 @@ FIXTURE_CATALOG: dict[str, tuple[str, str]] = {
     "d_missing": ("fixture_d_missing_info.json", "Missing Information"),
     "e_keyword": ("fixture_e_keyword_trap.json", "Keyword Trap"),
     "f_preferred": ("fixture_f_preferred_gap.json", "Preferred Skill Gap"),
+    "g_calibration_se": (
+        "fixture_g_calibration_software_engineer.json",
+        "Calibration Software Engineer (remote)",
+    ),
 }
 
 

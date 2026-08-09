@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.agents.scout.assembler import enforce_hard_filter
 from app.agents.scout.ingestion.dedupe import find_duplicate_job
 from app.agents.scout.evidence_matcher import match_skills
 from app.agents.scout.hard_filters import apply_hard_filters
@@ -82,6 +83,8 @@ class ScoutPipeline:
         persist: bool = False,
         create_job_record: bool = False,
         job_id: int | None = None,
+        source_content_partial: bool = False,
+        extraction_confidence: str | None = None,
     ) -> ScoutPipelineResult:
         """Evaluate a normalized job against the candidate profile."""
         logger.info(
@@ -104,6 +107,8 @@ class ScoutPipeline:
             skill_report=skill_report,
             hard_filter=hard_filter,
             evaluator_version=self.settings.scout_evaluator_version,
+            source_content_partial=source_content_partial,
+            extraction_confidence=extraction_confidence,
         )
 
         try:
@@ -115,17 +120,24 @@ class ScoutPipeline:
                 f"Evaluator failed safely (no fabricated recommendation): {exc}"
             ) from exc
 
+        # LLM cannot clear hard-filter dealbreakers
+        evaluation = enforce_hard_filter(evaluation, hard_filter)
+        evaluation.source_content_partial = source_content_partial
         evaluation = apply_recommendation_rules(evaluation, self.thresholds)
         evaluation.job_id = job_id
         evaluation.evaluator_version = self.settings.scout_evaluator_version
+        if not evaluation.prompt_version:
+            evaluation.prompt_version = self.settings.scout_prompt_version
 
         logger.info(
             "scout_evaluation_success recommendation=%s qualification=%s "
-            "desirability=%s confidence=%s",
+            "desirability=%s confidence=%s provider=%s model=%s",
             evaluation.recommendation.value,
             evaluation.qualification_score,
             evaluation.desirability_score,
             evaluation.confidence.value,
+            evaluation.evaluator_provider,
+            evaluation.evaluator_model,
         )
 
         db_job: Job | None = None

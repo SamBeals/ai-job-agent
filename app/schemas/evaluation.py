@@ -68,8 +68,15 @@ class ScoutEvaluation(BaseModel):
     uncertainties: list[str] = Field(default_factory=list)
     hard_filter: HardFilterResult | None = None
     evaluated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    evaluator_version: str = "2a.1"
+    evaluator_version: str = "2a.6"
     evaluator_provider: str = "mock"
+    prompt_version: str | None = None
+    evaluator_model: str | None = None
+    requirement_matches: list[dict[str, Any]] = Field(default_factory=list)
+    job_characteristics: dict[str, Any] | None = None
+    token_usage: dict[str, Any] | None = None
+    source_content_partial: bool = False
+    evaluation_fingerprint: str | None = None
 
     @field_validator("qualification_score", "desirability_score", mode="before")
     @classmethod

@@ -4,7 +4,8 @@ Examples:
   python -m app.agents.scout.evaluate --fixture a_strong_backend
   python -m app.agents.scout.evaluate --url "https://example.com/jobs/123"
   python -m app.agents.scout.evaluate --file ./job_description.txt
-  python -m app.agents.scout.evaluate --file ./job.json   # NormalizedJob JSON also accepted
+  python -m app.agents.scout.evaluate --file ./job.txt --provider mock
+  python -m app.agents.scout.evaluate --file ./job.txt --provider openai
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from app.agents.scout.ingestion import (
     IngestionError,
     JobIngestionService,
 )
+from app.agents.scout.llm.factory import LLMUnavailableError, get_llm_client
 from app.agents.scout.pipeline import ScoutEvaluationError, ScoutPipeline
 from app.agents.scout.profile_loader import CandidateProfileError, load_candidate_profile
 from app.config import get_settings
@@ -36,6 +38,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--profile", default=None, help="Candidate profile path")
     p.add_argument("--title", default=None, help="Optional title override for --file text")
     p.add_argument("--company", default=None, help="Optional company override for --file text")
+    p.add_argument(
+        "--provider",
+        default=None,
+        choices=["mock", "openai"],
+        help="Override LLM_PROVIDER for this run only (does not mutate .env)",
+    )
     p.add_argument("--persist", action="store_true", help="Persist Job + ScoutEvaluation")
     p.add_argument("--json", action="store_true", help="Machine-readable JSON output")
     return p
@@ -47,7 +55,12 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
     args = _build_parser().parse_args(argv)
-    settings = get_settings()
+    base = get_settings()
+    settings = (
+        base.model_copy(update={"llm_provider": args.provider})
+        if args.provider
+        else base
+    )
     profile_path = args.profile or settings.candidate_profile_path
     ingestion = JobIngestionService(settings)
 
@@ -84,7 +97,8 @@ def main(argv: list[str] | None = None) -> int:
                     company=args.company,
                 )
         candidate = load_candidate_profile(profile_path)
-    except (IngestionError, CandidateProfileError, OSError, ValueError) as exc:
+        llm_client = get_llm_client(settings)
+    except (IngestionError, CandidateProfileError, OSError, ValueError, LLMUnavailableError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
@@ -94,12 +108,18 @@ def main(argv: list[str] | None = None) -> int:
         session = SessionLocal()
 
     try:
-        pipeline = ScoutPipeline(settings=settings, session=session)
+        pipeline = ScoutPipeline(
+            settings=settings,
+            session=session,
+            llm_client=llm_client,
+        )
         result = pipeline.evaluate(
             extraction.normalized_job,
             candidate,
             persist=args.persist,
             create_job_record=args.persist,
+            source_content_partial=extraction.partial_content,
+            extraction_confidence=extraction.extraction_confidence.value,
         )
         if args.persist and session is not None:
             session.commit()
@@ -128,6 +148,11 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 60)
     print(f"Source: {extraction.input_source.value} / {extraction.extraction_method.value}")
     print(f"Extraction confidence: {extraction.extraction_confidence.value}")
+    print(
+        f"Evaluator: {evaluation.evaluator_provider}"
+        f" / {evaluation.evaluator_model or 'n/a'}"
+        f" / prompt {evaluation.prompt_version or 'n/a'}"
+    )
     if extraction.warnings:
         print("Extraction warnings:")
         for w in extraction.warnings:

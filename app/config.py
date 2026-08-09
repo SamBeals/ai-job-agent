@@ -31,9 +31,12 @@ class Settings(BaseSettings):
 
     # Scout / LLM
     llm_provider: str = "mock"
-    llm_model: str = ""
+    llm_model: str = "gpt-4o-mini"
+    llm_temperature: float = 0.1
     openai_api_key: str = ""
-    scout_evaluator_version: str = "2a.1"
+    llm_failure_fallback: str = "none"  # none | never silently use mock
+    scout_prompt_version: str = "qualification-v1"
+    scout_evaluator_version: str = "2a.6"
     scout_min_qualification_score: int = 55
     scout_min_desirability_score: int = 50
     scout_strong_qualification_score: int = 80

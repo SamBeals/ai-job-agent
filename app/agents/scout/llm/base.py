@@ -35,9 +35,13 @@ def build_deterministic_context(
     skill_report: SkillMatchReport,
     hard_filter: HardFilterResult,
     evaluator_version: str,
+    source_content_partial: bool = False,
+    extraction_confidence: str | None = None,
 ) -> DeterministicContext:
     return DeterministicContext(
         skill_report=skill_report.model_dump(),
         hard_filter=hard_filter.model_dump(),
         evaluator_version=evaluator_version,
+        source_content_partial=source_content_partial,
+        extraction_confidence=extraction_confidence,
     )

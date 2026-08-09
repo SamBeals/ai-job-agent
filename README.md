@@ -29,7 +29,7 @@ Authorization is **deterministic application logic**, never LLM prompt trust.
 
 Invariant: **NO APPLICATION WITHOUT EXPLICIT USER APPROVAL.**
 
-Scout recommendations never authorize anything.
+Scout recommendations never authorize anything. Perfect qualification scores do not authorize anything.
 
 ## Architecture
 
@@ -40,34 +40,46 @@ flowchart TB
   N["Normalizer"]
   HF["Hard Filters"]
   EM["Evidence Matcher"]
-  SE["Scout Evaluator\n(mock / LLM)"]
-  QD["Qualification + Desirability"]
+  SE["Semantic Qualifier\n(mock / OpenAI)"]
+  QS["Deterministic\nqualification scoring"]
+  DS["Deterministic\ndesirability scoring"]
   R["Recommendation"]
   D["Discord Review"]
   AS["ApprovalService\n(only path to APPROVED)"]
 
   CP --> EM
   CP --> HF
-  JI --> N --> HF --> EM --> SE --> QD --> R --> D
+  JI --> N --> HF --> EM --> SE --> QS --> DS --> R --> D
   D -->|"explicit APPROVE"| AS
   R -.->|"cannot cross"| AS
 ```
 
-### Phase 2A concepts
+### Deterministic responsibilities (code)
 
-| Concept | Meaning |
-| --- | --- |
-| **Candidate facts** | Verified employers, titles, dates, education, skills, certifications, projects |
-| **Candidate preferences** | What the user wants next (roles, salary, remote, location, dealbreakers) |
-| **Qualification score** | How well the candidate matches what the employer wants (0–100) |
-| **Desirability score** | How well the job matches *known* candidate preferences (0–100) |
-| **Hard filters** | Deterministic dealbreakers before LLM judgment |
-| **LLM judgment** | Nuanced evaluation only after structured filtering/matching |
-| **Authorization** | Completely separate — human APPROVE only |
+- Hard filters (including salary minimum)
+- Preference / desirability scoring
+- Aggregation of requirement matches → qualification score
+- Authorization and approval state
+- Persistence rules
+- Confidence capping for partial / low-extraction content
 
-Unknown preferences must **not** penalize or hard-reject a job.
+### LLM responsibilities (advisory)
 
-A skill listed on a résumé does **not** prove years, proficiency, or production depth.
+- Understand job requirements semantically
+- Distinguish required / preferred / contextual mentions
+- Compare requirements to **verified** candidate evidence
+- Classify evidence strength and match level
+- Identify transferable experience and gaps
+- Explain qualification (not desire, not approval)
+
+### LLM must never
+
+- Invent candidate facts, years, employers, or proficiency
+- Change hard filters
+- Approve jobs or create `Approval` records
+- Submit applications
+- Override `ApprovalService`
+- Silently alter preferences or substitute mock when OpenAI fails
 
 See [docs/FACTUAL_INTEGRITY.md](docs/FACTUAL_INTEGRITY.md).
 
@@ -87,8 +99,8 @@ DISCOVERED → SCORED → RECOMMENDED → AWAITING_APPROVAL
 
 ```
 app/
-  schemas/             # Pydantic domain schemas (candidate, job, evaluation)
-  agents/scout/        # Pipeline, hard filters, evidence, mock LLM, CLI
+  schemas/             # Pydantic domain schemas (candidate, job, evaluation, qualification)
+  agents/scout/        # Pipeline, hard filters, evidence, LLM clients, prompts, CLI
   discord/             # bot, views, embeds
   models/              # Job, Approval, Application, ScoutEvaluationRecord
   services/            # JobService, ApprovalService, ScoutEvaluationService
@@ -112,6 +124,8 @@ cp data/candidate_profile.example.json data/candidate_profile.json
 # Edit .env and fill verified facts into candidate_profile.json
 ```
 
+API keys belong **only** in `.env` (gitignored). Never commit keys or `data/candidate_profile.json`.
+
 ## Environment variables
 
 | Variable | Required | Description |
@@ -125,13 +139,53 @@ cp data/candidate_profile.example.json data/candidate_profile.json
 | `CANDIDATE_PROFILE_PATH` | No | Default `./data/candidate_profile.json` |
 | `API_HOST` / `API_PORT` | No | FastAPI bind defaults |
 | `LLM_PROVIDER` | No | `mock` (default) or `openai` |
-| `LLM_MODEL` | No | Model name when using a paid provider |
-| `OPENAI_API_KEY` | No | Only if `LLM_PROVIDER=openai` |
-| `SCOUT_EVALUATOR_VERSION` | No | Default `2a.1` |
+| `LLM_MODEL` | No | Default `gpt-4o-mini` when using OpenAI |
+| `LLM_TEMPERATURE` | No | Default `0.1` |
+| `OPENAI_API_KEY` | If openai | Required when `LLM_PROVIDER=openai` — fail-clear, no silent mock |
+| `LLM_FAILURE_FALLBACK` | No | `none` (default). Do not silently fall back to mock |
+| `SCOUT_PROMPT_VERSION` | No | Default `qualification-v1` |
+| `SCOUT_EVALUATOR_VERSION` | No | Default `2a.6` |
 | `SCOUT_MIN_QUALIFICATION_SCORE` | No | Default `55` |
 | `SCOUT_MIN_DESIRABILITY_SCORE` | No | Default `50` |
 | `SCOUT_STRONG_QUALIFICATION_SCORE` | No | Default `80` |
 | `SCOUT_STRONG_DESIRABILITY_SCORE` | No | Default `75` |
+
+### Switching evaluators
+
+**Mock (deterministic, free):**
+
+```bash
+# .env
+LLM_PROVIDER=mock
+```
+
+```bash
+python -m app.agents.scout.evaluate --fixture g_calibration_se --provider mock
+```
+
+**OpenAI (structured qualification analysis):**
+
+```bash
+# .env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY_HERE
+LLM_MODEL=gpt-4o-mini
+SCOUT_PROMPT_VERSION=qualification-v1
+```
+
+```bash
+python -m app.agents.scout.evaluate --fixture g_calibration_se --provider openai
+```
+
+`--provider` overrides for one run only; it does not rewrite `.env`.
+
+If `LLM_PROVIDER=openai` and `OPENAI_API_KEY` is missing, Scout **fails clearly** and does **not** secretly use mock.
+
+### Compare mock vs OpenAI
+
+```bash
+python -m app.agents.scout.compare --fixture g_calibration_se --providers mock,openai
+```
 
 ## Running locally
 
@@ -156,7 +210,8 @@ Slash commands:
 | `/status` | Basic system status |
 | `/jobs` | Jobs awaiting approval |
 | `/testjob` | Dev-only: insert a fake recommendation |
-| `/scout-test` | Dev-only: evaluate a Scout fixture and show scores |
+| `/scout-test` | Dev-only: evaluate a fixture, URL, or pasted job |
+| `/scout-detail` | Requirement-level analysis for an already evaluated job |
 
 ### Scout test harness (CLI)
 
@@ -165,9 +220,10 @@ source .venv/bin/activate
 
 # Fixture
 python -m app.agents.scout.evaluate --fixture a_strong_backend
+python -m app.agents.scout.evaluate --fixture g_calibration_se
 
 # Pasted / file job description
-python -m app.agents.scout.evaluate --file ./job_description.txt
+python -m app.agents.scout.evaluate --file ./job_description.txt --provider mock
 
 # Public job URL (SSRF-protected fetch)
 python -m app.agents.scout.evaluate --url "https://example.com/jobs/123"
@@ -185,6 +241,8 @@ source .venv/bin/activate
 pytest -v
 ```
 
+No test calls a real paid API. OpenAI is mocked.
+
 ## Current scope
 
 ### Phase 1 (complete)
@@ -193,17 +251,21 @@ pytest -v
 - Job state machine
 - Agent placeholders with authorization checks
 
-### Phase 2A (this iteration)
+### Phase 2A–2A.5 (complete)
 
-- Candidate profile schema + private local profile
-- Preferences schema with UNKNOWN-safe semantics
-- Normalized job + Scout evaluation schemas
-- Hard filters, skill aliases, evidence matching
-- Qualification vs desirability scoring
-- Mock LLM evaluator + optional OpenAI abstraction
-- Scout evaluation persistence
-- CLI + `/scout-test` harness
-- Fixtures A–F
+- Candidate profile + preferences
+- Hard filters, evidence matching, desirability
+- Manual fixture / URL / paste ingestion
+- Discord Scout cards
+
+### Phase 2A.6 (this iteration)
+
+- Evidence-grounded semantic qualification (mock + OpenAI)
+- Structured requirement matches + deterministic score aggregation
+- Privacy-minimized LLM candidate payload
+- Prompt versioning + token usage metadata + evaluation fingerprint
+- Provider CLI override + compare utility
+- Calibration fixture `g_calibration_se`
 
 ### Not started
 
@@ -211,5 +273,6 @@ pytest -v
 - Playwright / application submission
 - Resume generation
 - Feedback-learning algorithms
+- Multi-model routing / evaluation cache hit path
 
-Do not begin Phase 2B (autonomous discovery) without explicit approval.
+Do not begin autonomous discovery without explicit approval. Next step is **human calibration** of Scout judgments.

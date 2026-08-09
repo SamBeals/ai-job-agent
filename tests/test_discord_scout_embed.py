@@ -46,3 +46,5 @@ def test_discord_embed_handles_unknown_salary_location() -> None:
     assert "QUALIFICATION" in field_map
     assert "80/100" in field_map["QUALIFICATION"]
     assert "Unknown" in field_map
+    assert "Strong Evidence" in field_map
+    assert "Why Scout recommends it" in field_map

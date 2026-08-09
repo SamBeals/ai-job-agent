@@ -11,11 +11,17 @@ from sqlalchemy import func, select
 
 from app.config import Settings, get_settings
 from app.database.database import SessionLocal, init_db
-from app.discord.embeds import job_recommendation_embed, system_status_embed
+from app.discord.embeds import (
+    job_recommendation_embed,
+    scout_detail_embed,
+    system_status_embed,
+)
 from app.discord.scout_views import ScoutIngestView
 from app.discord.views import JobActionView
 from app.models.job import Job, JobStatus
+from app.schemas.evaluation import ScoutEvaluation
 from app.services.job_service import JobService
+from app.services.scout_evaluation_service import ScoutEvaluationService
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +160,38 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
                 "`python -m app.agents.scout.evaluate --file ./job.txt`"
             ),
             view=ScoutIngestView(settings),
+            ephemeral=True,
+        )
+
+    @bot.tree.command(
+        name="scout-detail",
+        description="Show requirement-level Scout analysis for an evaluated job",
+    )
+    @app_commands.describe(job_id="Persisted job id")
+    async def scout_detail_command(interaction: discord.Interaction, job_id: int) -> None:
+        with SessionLocal() as session:
+            job = session.get(Job, job_id)
+            if job is None:
+                await interaction.response.send_message(
+                    f"Job {job_id} not found.",
+                    ephemeral=True,
+                )
+                return
+            record = ScoutEvaluationService(session).latest_for_job(job_id)
+            if record is None:
+                await interaction.response.send_message(
+                    f"No Scout evaluation found for job {job_id}.",
+                    ephemeral=True,
+                )
+                return
+            evaluation = ScoutEvaluation.model_validate(record.evaluation_json)
+            embed = scout_detail_embed(job, evaluation)
+        await interaction.response.send_message(
+            content=(
+                "Requirement-level Scout detail. "
+                "This is **not** authorization — Approve is still required."
+            ),
+            embed=embed,
             ephemeral=True,
         )
 

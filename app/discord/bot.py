@@ -2,27 +2,19 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from sqlalchemy import func, select
 
-from app.agents.scout.pipeline import ScoutPipeline
-from app.agents.scout.profile_loader import load_candidate_profile
 from app.config import Settings, get_settings
 from app.database.database import SessionLocal, init_db
-from app.discord.embeds import (
-    job_recommendation_embed,
-    scout_evaluation_embed,
-    system_status_embed,
-)
+from app.discord.embeds import job_recommendation_embed, system_status_embed
+from app.discord.scout_views import ScoutIngestView
 from app.discord.views import JobActionView
 from app.models.job import Job, JobStatus
-from app.schemas.job_posting import NormalizedJob
 from app.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
@@ -92,7 +84,6 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
             )
             return
 
-        # Show up to 5 embeds to stay within Discord limits
         first, rest = jobs[0], jobs[1:5]
         view = JobActionView(first.id, first.job_url, timeout=None)
         await interaction.response.send_message(
@@ -128,7 +119,6 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
         with SessionLocal() as session:
             job = JobService(session).create_fake_recommendation()
             session.commit()
-            # Refresh attributes after commit
             session.refresh(job)
             embed = job_recommendation_embed(job)
             view = JobActionView(job.id, job.job_url, timeout=None)
@@ -145,12 +135,9 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
 
     @bot.tree.command(
         name="scout-test",
-        description="[DEV] Evaluate a Scout fixture job (does not authorize)",
+        description="[DEV] Manually ingest a fixture, URL, or pasted job for Scout",
     )
-    @app_commands.describe(
-        fixture="Fixture name: a_strong_backend | b_ml_research | c_onsite | d_missing | e_keyword | f_preferred"
-    )
-    async def scout_test_command(interaction: discord.Interaction, fixture: str) -> None:
+    async def scout_test_command(interaction: discord.Interaction) -> None:
         if not settings.enable_test_commands and not settings.is_development:
             await interaction.response.send_message(
                 "Test commands are disabled in this environment.",
@@ -158,77 +145,17 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
             )
             return
 
-        fixture_map = {
-            "a_strong_backend": "fixture_a_strong_backend.json",
-            "b_ml_research": "fixture_b_ml_research.json",
-            "c_onsite": "fixture_c_onsite_undesirable.json",
-            "d_missing": "fixture_d_missing_info.json",
-            "e_keyword": "fixture_e_keyword_trap.json",
-            "f_preferred": "fixture_f_preferred_gap.json",
-        }
-        filename = fixture_map.get(fixture.strip().lower())
-        if filename is None:
-            await interaction.response.send_message(
-                "Unknown fixture. Choose one of: " + ", ".join(fixture_map),
-                ephemeral=True,
-            )
-            return
-
-        path = Path("data/fixtures/scout") / filename
-        if not path.exists():
-            await interaction.response.send_message(
-                f"Fixture file missing: {path}",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.defer(ephemeral=True)
-        try:
-            job_data = json.loads(path.read_text(encoding="utf-8"))
-            normalized = NormalizedJob.model_validate(job_data)
-            # Use remote-required test profile for fixture C to demonstrate independence
-            if fixture.strip().lower() == "c_onsite":
-                profile = load_candidate_profile(
-                    "data/fixtures/profiles/test_remote_required.json"
-                )
-            else:
-                profile = load_candidate_profile(settings.candidate_profile_path)
-
-            with SessionLocal() as session:
-                pipeline = ScoutPipeline(settings=settings, session=session)
-                result = pipeline.evaluate(
-                    normalized,
-                    profile,
-                    persist=True,
-                    create_job_record=True,
-                )
-                session.commit()
-                if result.job is None:
-                    await interaction.followup.send(
-                        "Evaluation completed but no job was persisted.",
-                        ephemeral=True,
-                    )
-                    return
-                session.refresh(result.job)
-                embed = scout_evaluation_embed(result.job, result.evaluation)
-                view = JobActionView(result.job.id, result.job.job_url, timeout=None)
-                await interaction.followup.send(
-                    content=(
-                        f"**Scout test:** `{fixture}`\n"
-                        f"Present to user: `{result.should_present}`\n"
-                        "Scout recommendation is **not** authorization. "
-                        "Only APPROVE authorizes this exact job."
-                    ),
-                    embed=embed,
-                    view=view if result.job.status_enum == JobStatus.AWAITING_APPROVAL else None,
-                    ephemeral=True,
-                )
-        except Exception as exc:  # noqa: BLE001 — surface clear Discord error
-            logger.exception("scout-test failed")
-            await interaction.followup.send(
-                f"Scout test failed safely: `{exc}`",
-                ephemeral=True,
-            )
+        await interaction.response.send_message(
+            content=(
+                "**AI Job Scout — manual evaluation**\n"
+                "Choose how to supply a job. Scout may recommend, but **never authorizes**.\n"
+                "Only the **APPROVE** button creates authorization for that exact job.\n\n"
+                "Long postings: Discord paste is capped at 4000 characters — use the CLI for full text:\n"
+                "`python -m app.agents.scout.evaluate --file ./job.txt`"
+            ),
+            view=ScoutIngestView(settings),
+            ephemeral=True,
+        )
 
     return bot
 

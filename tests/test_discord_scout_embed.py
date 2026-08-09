@@ -42,7 +42,7 @@ def test_discord_embed_handles_unknown_salary_location() -> None:
     embed = scout_evaluation_embed(job, evaluation)
     field_map = {f.name: f.value for f in embed.fields}
     assert field_map["Salary"] == "Unknown"
-    assert field_map["Location"] == "Unknown"
+    assert "Unknown location" in (embed.description or "")
     assert "QUALIFICATION" in field_map
     assert "80/100" in field_map["QUALIFICATION"]
-    assert "Uncertainties" in field_map
+    assert "Unknown" in field_map

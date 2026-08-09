@@ -82,11 +82,16 @@ def scout_evaluation_embed(
     evaluation: ScoutEvaluation,
     *,
     footer_note: str | None = None,
+    extraction_warnings: list[str] | None = None,
+    extraction_confidence: str | None = None,
 ) -> discord.Embed:
     """Compact Scout evaluation embed for Discord review."""
+    loc_bits = [x for x in (job.location, job.remote_status) if x]
+    loc_line = " • ".join(loc_bits) if loc_bits else "Unknown location"
+    desc = f"**{job.company}**\nAI JOB SCOUT\n{loc_line}"
     embed = discord.Embed(
         title=job.title,
-        description=f"**{job.company}**\nAI JOB SCOUT",
+        description=desc,
         color=_status_color(job.status_enum),
         url=job.job_url,
     )
@@ -110,12 +115,9 @@ def scout_evaluation_embed(
         value=evaluation.recommendation.value,
         inline=True,
     )
-    embed.add_field(
-        name="Location",
-        value=job.remote_status or job.location or "Unknown",
-        inline=True,
-    )
     embed.add_field(name="Salary", value=_salary_text(job), inline=True)
+    if extraction_confidence:
+        embed.add_field(name="Extraction", value=extraction_confidence, inline=True)
 
     if evaluation.matching_skills:
         strong = "\n".join(f"✓ {s}" for s in evaluation.matching_skills[:6])
@@ -127,15 +129,36 @@ def scout_evaluation_embed(
         missing = "\n".join(f"✗ {s}" for s in evaluation.missing_required_skills[:5])
         embed.add_field(name="Missing", value=_truncate(missing, 400), inline=False)
 
-    if evaluation.qualification_reasoning:
-        why = "\n".join(f"• {r}" for r in evaluation.qualification_reasoning[:3])
-        embed.add_field(name="Why Scout scores qualification", value=_truncate(why, 500), inline=False)
-    if evaluation.desirability_reasoning:
-        pref = "\n".join(f"• {r}" for r in evaluation.desirability_reasoning[:3])
-        embed.add_field(name="Preference alignment", value=_truncate(pref, 500), inline=False)
+    strengths = [
+        r for r in evaluation.desirability_reasoning if not r.lower().startswith("preference concern")
+    ][:3]
+    concerns = [
+        r.replace("Preference concern: ", "", 1)
+        for r in evaluation.desirability_reasoning
+        if r.lower().startswith("preference concern")
+    ][:3]
+    if strengths:
+        embed.add_field(
+            name="Preference strengths",
+            value=_truncate("\n".join(f"✓ {s}" for s in strengths), 500),
+            inline=False,
+        )
+    if concerns:
+        embed.add_field(
+            name="Preference concerns",
+            value=_truncate("\n".join(f"• {c}" for c in concerns), 400),
+            inline=False,
+        )
     if evaluation.uncertainties:
-        unk = "\n".join(f"• {r}" for r in evaluation.uncertainties[:3])
-        embed.add_field(name="Uncertainties", value=_truncate(unk, 400), inline=False)
+        unk = "\n".join(f"? {r}" for r in evaluation.uncertainties[:3])
+        embed.add_field(name="Unknown", value=_truncate(unk, 400), inline=False)
+    if extraction_warnings:
+        warn = "\n".join(f"• {w}" for w in extraction_warnings[:3])
+        embed.add_field(name="Extraction notes", value=_truncate(warn, 300), inline=False)
+
+    if evaluation.qualification_reasoning:
+        why = "\n".join(f"• {r}" for r in evaluation.qualification_reasoning[:2])
+        embed.add_field(name="Why Scout scored qualification", value=_truncate(why, 400), inline=False)
 
     note = footer_note or (
         "Scout recommendation ≠ authorization. Explicit Approve required for this exact job."

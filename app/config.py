@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     scout_maybe_qualification_score: int = 40
     scout_maybe_desirability_score: int = 40
 
+    # Manual job ingestion (Phase 2A.5)
+    ingestion_http_timeout_seconds: float = 15.0
+    ingestion_max_response_bytes: int = 2_000_000
+    ingestion_max_redirects: int = 5
+    ingestion_user_agent: str = (
+        "AI-Job-Agent-Scout/2A.5 (+local; manual job evaluation; not a crawler)"
+    )
+    ingestion_extractor_version: str = "2a.5.1"
+
     @property
     def is_development(self) -> bool:
         return self.app_env.lower() in {"development", "dev", "local", "test"}

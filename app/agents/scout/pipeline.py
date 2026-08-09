@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.agents.scout.ingestion.dedupe import find_duplicate_job
 from app.agents.scout.evidence_matcher import match_skills
 from app.agents.scout.hard_filters import apply_hard_filters
 from app.agents.scout.llm.base import LLMClient, build_deterministic_context
 from app.agents.scout.llm.factory import get_llm_client
-from app.agents.scout.llm.mock import MockLLMClient
 from app.agents.scout.llm.openai_client import EvaluatorOutputError
 from app.agents.scout.profile_loader import CandidateProfileError, load_candidate_profile
 from app.agents.scout.scoring import (
@@ -24,7 +24,7 @@ from app.agents.scout.scoring import (
 from app.config import Settings, get_settings
 from app.models.job import Job, JobStatus
 from app.schemas.candidate import CandidateProfile
-from app.schemas.evaluation import Recommendation, ScoutEvaluation
+from app.schemas.evaluation import ScoutEvaluation
 from app.schemas.job_posting import NormalizedJob
 from app.services.job_service import JobService
 from app.services.scout_evaluation_service import ScoutEvaluationService
@@ -187,33 +187,29 @@ class ScoutPipeline:
         if job_id is not None:
             db_job = job_service.require_job(job_id)
         elif create_job_record:
-            # Always create as DISCOVERED — never APPROVED
-            db_job = job_service.create_job(
-                company=job.company,
-                title=job.title,
-                source=job.source or "scout",
-                external_id=job.external_id,
-                location=job.location,
-                remote_status=job.remote_status,
-                salary_min=job.salary_min,
-                salary_max=job.salary_max,
-                job_url=job.source_url,
-                description=job.description,
-                fit_score=evaluation.qualification_score / 100.0,
-                recommendation_reason=evaluation.summary_reason(),
-                status=JobStatus.DISCOVERED,
-            )
-            # Advance through scoring states when recommended for human review
-            db_job.transition_to(JobStatus.SCORED)
-            if should_present_to_user(evaluation):
-                db_job.transition_to(JobStatus.RECOMMENDED)
-                db_job.transition_to(JobStatus.AWAITING_APPROVAL)
-            elif evaluation.recommendation == Recommendation.HARD_REJECT:
-                db_job.transition_to(JobStatus.ARCHIVED)
+            duplicate = find_duplicate_job(self.session, job)
+            if duplicate is not None:
+                db_job = self._update_existing_job(duplicate, job, evaluation)
             else:
-                db_job.transition_to(JobStatus.ARCHIVED)
-            db_job.updated_at = datetime.now(timezone.utc)
-            self.session.flush()
+                # Always create as DISCOVERED — never APPROVED
+                db_job = job_service.create_job(
+                    company=job.company,
+                    title=job.title,
+                    source=job.source or "scout",
+                    external_id=job.external_id,
+                    location=job.location,
+                    remote_status=job.remote_status,
+                    salary_min=job.salary_min,
+                    salary_max=job.salary_max,
+                    job_url=job.source_url,
+                    description=job.description,
+                    fit_score=evaluation.qualification_score / 100.0,
+                    recommendation_reason=evaluation.summary_reason(),
+                    status=JobStatus.DISCOVERED,
+                )
+                self._advance_after_score(db_job, evaluation)
+                db_job.updated_at = datetime.now(timezone.utc)
+                self.session.flush()
 
         if db_job is None:
             return None, None
@@ -222,3 +218,66 @@ class ScoutPipeline:
         record = eval_service.save_evaluation(db_job.id, evaluation)
         self.session.flush()
         return db_job, record.id
+
+    def _update_existing_job(
+        self,
+        db_job: Job,
+        job: NormalizedJob,
+        evaluation: ScoutEvaluation,
+    ) -> Job:
+        """Reuse Job on duplicate; append a new ScoutEvaluation.
+
+        Does not alter APPROVED/REJECTED/post-approval statuses.
+        May move ARCHIVED → AWAITING_APPROVAL when newly presentable.
+        """
+        db_job.fit_score = evaluation.qualification_score / 100.0
+        db_job.recommendation_reason = evaluation.summary_reason()
+        if job.description:
+            db_job.description = job.description
+        if job.source_url and not db_job.job_url:
+            db_job.job_url = job.source_url
+        if job.location and not db_job.location:
+            db_job.location = job.location
+        if job.remote_status and not db_job.remote_status:
+            db_job.remote_status = job.remote_status
+        if job.salary_min is not None and db_job.salary_min is None:
+            db_job.salary_min = job.salary_min
+        if job.salary_max is not None and db_job.salary_max is None:
+            db_job.salary_max = job.salary_max
+
+        status = db_job.status_enum
+        protected = {
+            JobStatus.APPROVED,
+            JobStatus.REJECTED,
+            JobStatus.GENERATING_RESUME,
+            JobStatus.RESUME_READY,
+            JobStatus.READY_TO_APPLY,
+            JobStatus.APPLYING,
+            JobStatus.APPLIED,
+            JobStatus.NEEDS_USER,
+            JobStatus.AWAITING_APPROVAL,
+        }
+        if status not in protected:
+            if status == JobStatus.DISCOVERED:
+                self._advance_after_score(db_job, evaluation)
+            elif status == JobStatus.ARCHIVED and should_present_to_user(evaluation):
+                # Re-open for review without touching authorization
+                db_job.status = JobStatus.AWAITING_APPROVAL.value
+            elif status in {JobStatus.SCORED, JobStatus.RECOMMENDED}:
+                self._advance_after_score(db_job, evaluation)
+
+        db_job.updated_at = datetime.now(timezone.utc)
+        self.session.flush()
+        return db_job
+
+    def _advance_after_score(self, db_job: Job, evaluation: ScoutEvaluation) -> None:
+        if db_job.status_enum == JobStatus.DISCOVERED:
+            db_job.transition_to(JobStatus.SCORED)
+        if db_job.status_enum == JobStatus.SCORED:
+            if should_present_to_user(evaluation):
+                db_job.transition_to(JobStatus.RECOMMENDED)
+                db_job.transition_to(JobStatus.AWAITING_APPROVAL)
+            else:
+                db_job.transition_to(JobStatus.ARCHIVED)
+        elif db_job.status_enum == JobStatus.RECOMMENDED and should_present_to_user(evaluation):
+            db_job.transition_to(JobStatus.AWAITING_APPROVAL)

@@ -163,19 +163,20 @@ Slash commands:
 ```bash
 source .venv/bin/activate
 
-# Strong backend match
-python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_a_strong_backend.json
+# Fixture
+python -m app.agents.scout.evaluate --fixture a_strong_backend
 
-# High qualification / low desirability (uses remote-required test profile)
-python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_c_onsite_undesirable.json \
-  --profile data/fixtures/profiles/test_remote_required.json
+# Pasted / file job description
+python -m app.agents.scout.evaluate --file ./job_description.txt
 
-# Missing salary/remote info
-python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_d_missing_info.json
+# Public job URL (SSRF-protected fetch)
+python -m app.agents.scout.evaluate --url "https://example.com/jobs/123"
 
 # Persist evaluation (still requires Discord APPROVE to authorize)
-python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_a_strong_backend.json --persist
+python -m app.agents.scout.evaluate --fixture a_strong_backend --persist
 ```
+
+Discord `/scout-test` opens buttons for **TEST FIXTURE**, **JOB URL**, and **PASTE JOB**. Paste is limited to Discord's 4000-character modal cap — use the CLI for longer postings.
 
 ## Tests
 

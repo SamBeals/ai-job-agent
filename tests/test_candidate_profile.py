@@ -27,9 +27,12 @@ def test_local_profile_validates_if_present() -> None:
         pytest.skip("local candidate_profile.json not present")
     profile = load_candidate_profile(path)
     assert profile.identity.full_name
-    # Preferences unknown by default — must not invent salary floors
-    assert profile.preferences.minimum_base_salary is None
-    assert profile.preferences.remote_required is None
+    # Private prefs may be configured locally; only assert schema validity / types.
+    assert profile.preferences.minimum_base_salary is None or isinstance(
+        profile.preferences.minimum_base_salary, int
+    )
+    assert profile.preferences.remote_required in {None, True, False}
+    assert profile.work_experience
 
 
 def test_invalid_profile_fails_clearly() -> None:

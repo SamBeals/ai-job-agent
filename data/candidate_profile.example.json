@@ -106,13 +106,17 @@
     "minimum_total_compensation": null,
     "currency": "USD",
     "remote_preference": null,
+    "work_arrangement_order": null,
     "remote_required": null,
     "hybrid_allowed": null,
     "onsite_allowed": null,
     "home_location": "Seattle, WA",
+    "preferred_locations": null,
     "acceptable_locations": null,
     "maximum_commute": null,
     "relocation_allowed": null,
+    "prefers_software_development": null,
+    "prefers_backend": null,
     "full_time_allowed": null,
     "contract_allowed": null,
     "contract_to_hire_allowed": null,
@@ -122,6 +126,6 @@
     "excluded_industries": null,
     "dealbreakers": null,
     "preferences": null,
-    "notes": "Example preferences are mostly unknown on purpose. Do not invent real user preferences."
+    "notes": "Example preferences are mostly unknown on purpose. Do not invent real user preferences. Schema fields preferred_locations, work_arrangement_order, prefers_software_development, and prefers_backend are optional ranking signals."
   }
 }

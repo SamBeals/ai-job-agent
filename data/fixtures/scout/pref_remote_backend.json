@@ -1,0 +1,23 @@
+{
+  "external_id": "pref-remote-backend",
+  "source": "fixture",
+  "company": "Cloud Harbor",
+  "title": "Senior Backend Software Engineer",
+  "location": "Remote - US",
+  "remote_status": "remote",
+  "employment_type": "full_time",
+  "salary_min": 150000,
+  "salary_max": 175000,
+  "salary_currency": "USD",
+  "description": "Remote Java backend engineering role building Spring Boot services and APIs.",
+  "responsibilities": [
+    "Build backend services in Java/Spring Boot",
+    "Design REST APIs",
+    "Operate services on AWS and Kubernetes"
+  ],
+  "required_skills": ["Java", "Spring Boot", "REST APIs", "AWS", "Kubernetes", "SQL"],
+  "preferred_skills": [],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": "senior"
+}

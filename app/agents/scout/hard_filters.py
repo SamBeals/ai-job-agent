@@ -172,6 +172,12 @@ def _check_location_relocation(
     rejections: list[FilterReason],
     warnings: list[FilterReason],
 ) -> None:
+    """Relocation can hard-reject only when explicitly prohibited.
+
+    preferred_locations / acceptable_locations are ranking signals for
+    desirability — not hard whitelists. Geographic mismatch must not
+    eliminate otherwise strong Phoenix-metro or remote opportunities.
+    """
     if prefs.relocation_allowed is False and job.requires_relocation is True:
         rejections.append(
             FilterReason(
@@ -180,26 +186,19 @@ def _check_location_relocation(
             )
         )
 
-    acceptable = prefs.acceptable_locations
     remote_status = (job.remote_status or "").lower()
-    if acceptable is not None and job.location and remote_status not in {"remote"}:
-        loc = job.location.lower()
-        if not any(a.lower() in loc or loc in a.lower() for a in acceptable):
-            # Only hard-reject when remote is clearly not an option
-            if remote_status in {"onsite", "on-site", "on site", "office"}:
-                rejections.append(
-                    FilterReason(
-                        code="LOCATION_NOT_ACCEPTABLE",
-                        message=f"Job location '{job.location}' is outside acceptable locations.",
-                    )
-                )
-            elif not remote_status:
-                warnings.append(
-                    FilterReason(
-                        code="LOCATION_UNCERTAIN",
-                        message="Location compatibility uncertain without remote status.",
-                    )
-                )
+    if (
+        (prefs.preferred_locations or prefs.acceptable_locations)
+        and not job.location
+        and remote_status not in {"remote"}
+        and not remote_status
+    ):
+        warnings.append(
+            FilterReason(
+                code="LOCATION_UNCERTAIN",
+                message="Location compatibility uncertain (no location or remote status listed).",
+            )
+        )
 
 
 def _check_employment_type(

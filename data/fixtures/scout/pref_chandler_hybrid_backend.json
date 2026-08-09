@@ -1,0 +1,23 @@
+{
+  "external_id": "pref-chandler-hybrid-backend",
+  "source": "fixture",
+  "company": "Desert Systems",
+  "title": "Senior Java Backend Engineer",
+  "location": "Chandler, Arizona",
+  "remote_status": "hybrid",
+  "employment_type": "full_time",
+  "salary_min": 140000,
+  "salary_max": 165000,
+  "salary_currency": "USD",
+  "description": "Build and operate Java Spring Boot backend services and REST APIs on AWS/Kubernetes.",
+  "responsibilities": [
+    "Design and implement backend microservices",
+    "Develop REST APIs and SQL-backed services",
+    "Collaborate with teammates in a hybrid office environment"
+  ],
+  "required_skills": ["Java", "Spring Boot", "REST APIs", "AWS", "Kubernetes", "SQL"],
+  "preferred_skills": ["Docker"],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": "senior"
+}

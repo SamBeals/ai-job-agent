@@ -1,0 +1,92 @@
+{
+  "schema_version": "2a.1",
+  "identity": {
+    "full_name": "Test Candidate",
+    "location": "Phoenix Metro, Arizona"
+  },
+  "professional_summary": "Sanitized test profile for office-friendly backend preference scoring.",
+  "work_experience": [
+    {
+      "company": "Example Insurance Co",
+      "title": "Product Engineer (Software)",
+      "location": "Phoenix, Arizona",
+      "employment_type": "full_time",
+      "start_date": "2020-10",
+      "end_date": null,
+      "is_current": true,
+      "verified_accomplishments": [
+        "Led backend development of Java services.",
+        "Designed and optimized RESTful APIs.",
+        "Deployed Java services on Kubernetes running in AWS."
+      ],
+      "technologies": ["Java", "Spring Boot", "REST APIs", "SQL", "Kubernetes", "AWS"]
+    },
+    {
+      "company": "Example Payments Co",
+      "title": "Software Engineer",
+      "location": "Phoenix, Arizona",
+      "employment_type": "contract",
+      "start_date": "2018-09",
+      "end_date": "2020-10",
+      "is_current": false,
+      "verified_accomplishments": [
+        "Automated regression testing using Selenium, JUnit, and TestNG."
+      ],
+      "technologies": ["Selenium", "JUnit", "TestNG", "Agile"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Example State University",
+      "degree": "Bachelor's",
+      "field": "Computer Science",
+      "start_date": "2014",
+      "end_date": "2018",
+      "status": "completed"
+    }
+  ],
+  "skills": {
+    "languages": ["Java", "JavaScript", "Python", "SQL"],
+    "frameworks": ["Spring Boot", "JUnit", "Selenium", "React"],
+    "cloud_and_infra": ["AWS", "Kubernetes", "Docker", "Terraform"],
+    "databases": ["PostgreSQL", "MongoDB"],
+    "practices": ["REST API Design", "Agile", "CI/CD"]
+  },
+  "certifications": [],
+  "projects": [],
+  "preferences": {
+    "target_roles": [
+      "Backend Software Engineer",
+      "Backend Engineer",
+      "Software Engineer",
+      "Senior Software Engineer",
+      "Java Software Engineer",
+      "Java Developer",
+      "Application Developer",
+      "Software Developer"
+    ],
+    "minimum_base_salary": 110000,
+    "currency": "USD",
+    "remote_preference": "hybrid",
+    "work_arrangement_order": ["hybrid", "onsite", "remote"],
+    "remote_required": false,
+    "hybrid_allowed": true,
+    "onsite_allowed": true,
+    "home_location": "Phoenix Metro, Arizona",
+    "preferred_locations": ["Chandler, Arizona"],
+    "acceptable_locations": [
+      "Chandler, Arizona",
+      "Tempe, Arizona",
+      "Mesa, Arizona",
+      "Gilbert, Arizona",
+      "Scottsdale, Arizona",
+      "Phoenix, Arizona",
+      "East Valley, Arizona"
+    ],
+    "relocation_allowed": null,
+    "prefers_software_development": true,
+    "prefers_backend": true,
+    "preferred_seniority": null,
+    "notes": "TEST PROFILE ONLY — mirrors office-friendly backend preference semantics without private candidate data."
+  }
+}

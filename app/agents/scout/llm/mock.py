@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.agents.scout.desirability import score_desirability
 from app.agents.scout.llm.base import DeterministicContext
 from app.schemas.candidate import CandidateProfile
 from app.schemas.evaluation import (
@@ -18,7 +19,6 @@ from app.schemas.evidence import (
     SkillMatchReport,
 )
 from app.schemas.job_posting import NormalizedJob
-from app.schemas.preferences import JobPreferences
 
 
 class MockLLMClient:
@@ -75,16 +75,22 @@ class MockLLMClient:
             )
 
         qual = self._qualification_score(candidate, job, skill_report)
-        desire = self._desirability_score(candidate.preferences, job)
+        desire_breakdown = score_desirability(candidate.preferences, job)
         confidence = self._confidence(job, skill_report)
         qual_reason = self._qualification_reasoning(candidate, job, skill_report)
-        desire_reason, uncertainties = self._desirability_reasoning(
-            candidate.preferences, job, hard_filter
-        )
+        desire_reason = list(desire_breakdown.strengths)
+        if desire_breakdown.concerns:
+            desire_reason.extend(
+                f"Preference concern: {c}" for c in desire_breakdown.concerns
+            )
+        uncertainties: list[str] = []
+        for item in [w.message for w in hard_filter.warnings] + desire_breakdown.unknowns:
+            if item not in uncertainties:
+                uncertainties.append(item)
 
         return ScoutEvaluation(
             qualification_score=qual,
-            desirability_score=desire,
+            desirability_score=desire_breakdown.score,
             recommendation=Recommendation.MAYBE,  # pipeline applies thresholds
             confidence=confidence,
             matching_skills=_fmt_matches(skill_report),
@@ -92,7 +98,7 @@ class MockLLMClient:
             missing_required_skills=list(skill_report.missing_required_skills),
             missing_preferred_skills=list(skill_report.missing_preferred_skills),
             experience_matches=list(skill_report.experience_matches),
-            concerns=self._concerns(skill_report),
+            concerns=self._concerns(skill_report) + list(desire_breakdown.concerns),
             dealbreakers=[],
             qualification_reasoning=qual_reason,
             desirability_reasoning=desire_reason,
@@ -167,40 +173,6 @@ class MockLLMClient:
             score += 4.0
         return _clamp(score)
 
-    def _desirability_score(self, prefs: JobPreferences, job: NormalizedJob) -> int:
-        """Score only against known preferences. Unknown prefs do not penalize."""
-        signals: list[float] = []
-
-        role_score = _role_alignment(prefs, job)
-        if role_score is not None:
-            signals.append(role_score)
-
-        salary_score = _salary_alignment(prefs, job)
-        if salary_score is not None:
-            signals.append(salary_score)
-
-        remote_score = _remote_alignment(prefs, job)
-        if remote_score is not None:
-            signals.append(remote_score)
-
-        seniority_score = _seniority_alignment(prefs, job)
-        if seniority_score is not None:
-            signals.append(seniority_score)
-
-        employment_score = _employment_alignment(prefs, job)
-        if employment_score is not None:
-            signals.append(employment_score)
-
-        industry_score = _industry_alignment(prefs, job)
-        if industry_score is not None:
-            signals.append(industry_score)
-
-        if not signals:
-            # No known preferences to evaluate — neutral desirability
-            return 70
-
-        return _clamp(sum(signals) / len(signals))
-
     def _confidence(self, job: NormalizedJob, report: SkillMatchReport) -> Confidence:
         points = 0
         if job.required_skills:
@@ -256,61 +228,6 @@ class MockLLMClient:
             lines.append("Limited structured requirements available for qualification scoring.")
         return lines
 
-    def _desirability_reasoning(
-        self,
-        prefs: JobPreferences,
-        job: NormalizedJob,
-        hard_filter: HardFilterResult,
-    ) -> tuple[list[str], list[str]]:
-        reasons: list[str] = []
-        uncertainties: list[str] = [w.message for w in hard_filter.warnings]
-
-        if prefs.target_roles or prefs.acceptable_roles:
-            score = _role_alignment(prefs, job)
-            if score is not None and score >= 70:
-                reasons.append("Role aligns with target/acceptable role preferences.")
-            elif score is not None and score < 50:
-                reasons.append("Role alignment with target preferences is weak.")
-            else:
-                reasons.append("Role alignment is moderate relative to stated preferences.")
-        else:
-            uncertainties.append("Role preference unknown — not used in desirability.")
-
-        if prefs.minimum_base_salary is None:
-            if job.salary_min is None and job.salary_max is None:
-                uncertainties.append("Salary compatibility unknown because compensation was not listed.")
-            else:
-                uncertainties.append("Salary preference unknown — listed compensation not scored.")
-        else:
-            if job.salary_min is None and job.salary_max is None:
-                uncertainties.append("Salary compatibility unknown because compensation was not listed.")
-            else:
-                offer = job.salary_max or job.salary_min
-                if offer and offer >= prefs.minimum_base_salary:
-                    reasons.append("Listed compensation meets candidate minimum.")
-                elif offer:
-                    reasons.append("Listed compensation appears below candidate minimum.")
-
-        if prefs.remote_required is None and not prefs.remote_preference:
-            if not job.remote_status:
-                uncertainties.append("Work arrangement compatibility unknown.")
-        else:
-            if not job.remote_status:
-                uncertainties.append("Work arrangement compatibility unknown.")
-            else:
-                reasons.append(f"Job remote status: {job.remote_status}.")
-
-        if prefs.preferred_industries is None and prefs.excluded_industries is None:
-            # industry must not affect when unknown — already true
-            pass
-
-        if not reasons:
-            reasons.append(
-                "No known preferences actively scored; desirability left neutral."
-            )
-
-        return reasons, uncertainties
-
     def _concerns(self, report: SkillMatchReport) -> list[str]:
         concerns: list[str] = []
         for skill in report.missing_required_skills:
@@ -329,10 +246,6 @@ def _norm(value: str) -> str:
     from app.agents.scout.skills import normalize_skill
 
     return normalize_skill(value)
-
-
-def _skill_key(formatted: str) -> str:
-    return _norm(formatted.split("—")[0].split("-")[0].strip())
 
 
 def _fmt_matches(report: SkillMatchReport) -> list[str]:
@@ -376,110 +289,3 @@ def _education_satisfied(candidate: CandidateProfile, requirements: list[str]) -
             if "master" in r and not completed:
                 return False
     return True
-
-
-def _role_alignment(prefs: JobPreferences, job: NormalizedJob) -> float | None:
-    targets = list(prefs.target_roles or []) + list(prefs.acceptable_roles or [])
-    if not targets and not prefs.excluded_roles:
-        return None
-    title = job.title.lower()
-    if prefs.excluded_roles:
-        for role in prefs.excluded_roles:
-            if role.lower() in title:
-                return 5.0
-    if not targets:
-        return None
-    best = 40.0
-    for role in targets:
-        tokens = [t for t in role.lower().replace("/", " ").split() if len(t) > 2]
-        if not tokens:
-            continue
-        hits = sum(1 for t in tokens if t in title)
-        ratio = hits / len(tokens)
-        best = max(best, 40 + ratio * 60)
-    return best
-
-
-def _salary_alignment(prefs: JobPreferences, job: NormalizedJob) -> float | None:
-    if prefs.minimum_base_salary is None:
-        return None
-    if job.salary_min is None and job.salary_max is None:
-        return None  # unknown — do not penalize
-    offer = job.salary_max if job.salary_max is not None else job.salary_min
-    assert offer is not None
-    if offer >= (prefs.preferred_base_salary or prefs.minimum_base_salary):
-        return 95.0
-    if offer >= prefs.minimum_base_salary:
-        return 80.0
-    return 20.0
-
-
-def _remote_alignment(prefs: JobPreferences, job: NormalizedJob) -> float | None:
-    if prefs.remote_required is None and not prefs.remote_preference and prefs.onsite_allowed is None:
-        return None
-    status = (job.remote_status or "").lower()
-    if not status:
-        return None
-    if prefs.remote_required is True:
-        if status == "remote":
-            return 100.0
-        if status == "hybrid":
-            return 55.0 if prefs.hybrid_allowed is not False else 10.0
-        return 10.0
-    if prefs.remote_preference:
-        pref = prefs.remote_preference.lower()
-        if pref in status:
-            return 90.0
-        return 50.0
-    return 70.0
-
-
-def _seniority_alignment(prefs: JobPreferences, job: NormalizedJob) -> float | None:
-    if not job.seniority:
-        return None
-    if not (prefs.preferred_seniority or prefs.acceptable_seniority or prefs.excluded_seniority):
-        return None
-    s = job.seniority.lower()
-    if prefs.excluded_seniority and any(x.lower() in s for x in prefs.excluded_seniority):
-        return 10.0
-    preferred = list(prefs.preferred_seniority or []) + list(prefs.acceptable_seniority or [])
-    if preferred and any(x.lower() in s or s in x.lower() for x in preferred):
-        return 90.0
-    if preferred:
-        return 45.0
-    return None
-
-
-def _employment_alignment(prefs: JobPreferences, job: NormalizedJob) -> float | None:
-    if not job.employment_type:
-        return None
-    flags = (prefs.full_time_allowed, prefs.contract_allowed, prefs.contract_to_hire_allowed)
-    if all(f is None for f in flags):
-        return None
-    emp = job.employment_type.lower()
-    if "full" in emp:
-        if prefs.full_time_allowed is False:
-            return 5.0
-        if prefs.full_time_allowed is True:
-            return 90.0
-    if "contract" in emp:
-        if prefs.contract_allowed is False:
-            return 5.0
-        if prefs.contract_allowed is True:
-            return 85.0
-    return 60.0
-
-
-def _industry_alignment(prefs: JobPreferences, job: NormalizedJob) -> float | None:
-    if prefs.preferred_industries is None and prefs.excluded_industries is None:
-        return None
-    if not job.industry:
-        return None
-    industry = job.industry.lower()
-    if prefs.excluded_industries and any(x.lower() in industry for x in prefs.excluded_industries):
-        return 5.0
-    if prefs.preferred_industries:
-        if any(x.lower() in industry for x in prefs.preferred_industries):
-            return 90.0
-        return 40.0
-    return None

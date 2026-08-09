@@ -1,0 +1,23 @@
+{
+  "external_id": "pref-chandler-frontend",
+  "source": "fixture",
+  "company": "Pixel Cactus",
+  "title": "Senior Frontend React Engineer",
+  "location": "Chandler, Arizona",
+  "remote_status": "hybrid",
+  "employment_type": "full_time",
+  "salary_min": 140000,
+  "salary_max": 160000,
+  "salary_currency": "USD",
+  "description": "Frontend-heavy React role focused on UI engineering and CSS/HTML component systems.",
+  "responsibilities": [
+    "Build React SPAs and frontend component libraries",
+    "Own CSS/HTML UI architecture",
+    "Collaborate with designers on UX"
+  ],
+  "required_skills": ["JavaScript", "React", "CSS", "HTML"],
+  "preferred_skills": ["TypeScript"],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": "senior"
+}

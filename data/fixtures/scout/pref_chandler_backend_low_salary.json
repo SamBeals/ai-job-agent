@@ -1,0 +1,23 @@
+{
+  "external_id": "pref-chandler-backend-low-salary",
+  "source": "fixture",
+  "company": "Bargain Soft",
+  "title": "Java Backend Engineer",
+  "location": "Chandler, Arizona",
+  "remote_status": "hybrid",
+  "employment_type": "full_time",
+  "salary_min": 95000,
+  "salary_max": 105000,
+  "salary_currency": "USD",
+  "description": "Strong Java backend role with compensation below the candidate minimum.",
+  "responsibilities": [
+    "Build Java Spring Boot services",
+    "Design REST APIs",
+    "Deploy on AWS Kubernetes"
+  ],
+  "required_skills": ["Java", "Spring Boot", "REST APIs", "AWS", "Kubernetes", "SQL"],
+  "preferred_skills": [],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": "senior"
+}

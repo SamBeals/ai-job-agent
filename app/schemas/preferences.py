@@ -30,16 +30,25 @@ class JobPreferences(BaseModel):
     currency: str | None = None
 
     # Work arrangement
-    remote_preference: str | None = None  # e.g. "remote", "hybrid", "onsite"
+    remote_preference: str | None = None  # primary preferred arrangement label
+    # Ordered preference: e.g. ["hybrid", "onsite", "remote"]. Affects ranking, not eligibility.
+    work_arrangement_order: list[str] | None = None
     remote_required: bool | None = None
     hybrid_allowed: bool | None = None
     onsite_allowed: bool | None = None
 
     # Geography
     home_location: str | None = None
+    # Ideal / strongest ranking boost (e.g. Chandler). Not a hard whitelist.
+    preferred_locations: list[str] | None = None
+    # Broader acceptable geography for ranking (e.g. Phoenix Metro). Not a hard whitelist.
     acceptable_locations: list[str] | None = None
     maximum_commute: str | None = None
     relocation_allowed: bool | None = None
+
+    # Work-focus preferences (desirability ranking; not hard filters by default)
+    prefers_software_development: bool | None = None
+    prefers_backend: bool | None = None
 
     # Employment
     full_time_allowed: bool | None = None

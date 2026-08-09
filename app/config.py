@@ -23,10 +23,23 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./data/ai_job_agent.db"
     enable_test_commands: bool = True
+    candidate_profile_path: str = "./data/candidate_profile.json"
 
     # FastAPI
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+
+    # Scout / LLM
+    llm_provider: str = "mock"
+    llm_model: str = ""
+    openai_api_key: str = ""
+    scout_evaluator_version: str = "2a.1"
+    scout_min_qualification_score: int = 55
+    scout_min_desirability_score: int = 50
+    scout_strong_qualification_score: int = 80
+    scout_strong_desirability_score: int = 75
+    scout_maybe_qualification_score: int = 40
+    scout_maybe_desirability_score: int = 40
 
     @property
     def is_development(self) -> bool:

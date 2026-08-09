@@ -1,0 +1,25 @@
+{
+  "external_id": "fixture-f-preferred-gap",
+  "source": "fixture",
+  "source_url": "https://example.com/jobs/backend-kafka-preferred",
+  "company": "Streamline Co",
+  "title": "Senior Software Engineer",
+  "location": "Remote - US",
+  "remote_status": "remote",
+  "employment_type": "full_time",
+  "salary_min": 150000,
+  "salary_max": 185000,
+  "salary_currency": "USD",
+  "description": "Java backend role with Kafka as a preferred skill.",
+  "responsibilities": [
+    "Build Java Spring Boot services",
+    "Design REST APIs",
+    "Operate on AWS Kubernetes"
+  ],
+  "required_skills": ["Java", "Spring Boot", "REST APIs", "AWS", "Kubernetes", "SQL"],
+  "preferred_skills": ["Kafka"],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": "senior",
+  "industry": "software"
+}

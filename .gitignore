@@ -22,6 +22,12 @@ data/*.db
 data/*.db-journal
 !data/*.example.json
 
+# Private candidate / application configuration (never commit)
+data/candidate_profile.json
+data/application_answers.json
+data/*private*
+data/*secret*
+
 # IDE
 .idea/
 .vscode/

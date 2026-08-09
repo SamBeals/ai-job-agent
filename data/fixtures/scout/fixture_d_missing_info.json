@@ -1,0 +1,24 @@
+{
+  "external_id": "fixture-d-missing-info",
+  "source": "fixture",
+  "source_url": "https://example.com/jobs/backend-engineer-mystery",
+  "company": "Opaque Systems",
+  "title": "Backend Software Engineer",
+  "location": null,
+  "remote_status": null,
+  "employment_type": "full_time",
+  "salary_min": null,
+  "salary_max": null,
+  "salary_currency": null,
+  "description": "Work on Java backend services and REST APIs.",
+  "responsibilities": [
+    "Implement Spring Boot services",
+    "Integrate with AWS infrastructure"
+  ],
+  "required_skills": ["Java", "Spring Boot", "REST APIs", "AWS", "SQL"],
+  "preferred_skills": ["Kubernetes"],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": null,
+  "industry": null
+}

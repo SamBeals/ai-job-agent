@@ -2,8 +2,6 @@
 
 Agentic job-application system with a hard authorization boundary: **no resume generation or application submission without explicit user approval of a specific job**.
 
-Phase 1 (this repository state) delivers the project foundation and Discord control plane only. It does **not** search real job boards, call LLMs, generate resumes, or automate browsers.
-
 ## Purpose
 
 Three long-term agents:
@@ -31,35 +29,47 @@ Authorization is **deterministic application logic**, never LLM prompt trust.
 
 Invariant: **NO APPLICATION WITHOUT EXPLICIT USER APPROVAL.**
 
+Scout recommendations never authorize anything.
+
 ## Architecture
 
 ```mermaid
 flowchart TB
-  subgraph control["Discord Control Plane"]
-    D["Discord Bot\n/status /jobs /testjob"]
-    V["Approve / Reject Buttons"]
-  end
+  CP["Candidate Profile\n(facts + preferences)"]
+  JI["Job Input\n(manual / fixtures)"]
+  N["Normalizer"]
+  HF["Hard Filters"]
+  EM["Evidence Matcher"]
+  SE["Scout Evaluator\n(mock / LLM)"]
+  QD["Qualification + Desirability"]
+  R["Recommendation"]
+  D["Discord Review"]
+  AS["ApprovalService\n(only path to APPROVED)"]
 
-  subgraph api["FastAPI + Services"]
-    JS["JobService"]
-    AS["ApprovalService\n(only path to APPROVED)"]
-    DB[(SQLite / future PostgreSQL)]
-  end
-
-  subgraph agents["Agent Placeholders (Phase 1)"]
-    Scout["ScoutAgent"]
-    Resume["ResumeAgent"]
-    App["ApplicantAgent"]
-  end
-
-  D --> JS
-  V --> AS
-  AS --> DB
-  JS --> DB
-  Scout -.->|"future: discover/score"| JS
-  Resume -->|"checks can_enter_application_pipeline"| AS
-  App -->|"checks can_enter_application_pipeline"| AS
+  CP --> EM
+  CP --> HF
+  JI --> N --> HF --> EM --> SE --> QD --> R --> D
+  D -->|"explicit APPROVE"| AS
+  R -.->|"cannot cross"| AS
 ```
+
+### Phase 2A concepts
+
+| Concept | Meaning |
+| --- | --- |
+| **Candidate facts** | Verified employers, titles, dates, education, skills, certifications, projects |
+| **Candidate preferences** | What the user wants next (roles, salary, remote, location, dealbreakers) |
+| **Qualification score** | How well the candidate matches what the employer wants (0–100) |
+| **Desirability score** | How well the job matches *known* candidate preferences (0–100) |
+| **Hard filters** | Deterministic dealbreakers before LLM judgment |
+| **LLM judgment** | Nuanced evaluation only after structured filtering/matching |
+| **Authorization** | Completely separate — human APPROVE only |
+
+Unknown preferences must **not** penalize or hard-reject a job.
+
+A skill listed on a résumé does **not** prove years, proficiency, or production depth.
+
+See [docs/FACTUAL_INTEGRITY.md](docs/FACTUAL_INTEGRITY.md).
 
 ### Job state machine
 
@@ -73,22 +83,20 @@ DISCOVERED → SCORED → RECOMMENDED → AWAITING_APPROVAL
                                          └─→ REJECTED → ARCHIVED
 ```
 
-`REJECTED` has no path back to `APPROVED` without an explicit future recovery mechanism.
-
 ## Project layout
 
 ```
 app/
-  main.py              # FastAPI app
-  config.py            # pydantic-settings / dotenv
-  agents/              # Scout, Resume, Applicant placeholders
+  schemas/             # Pydantic domain schemas (candidate, job, evaluation)
+  agents/scout/        # Pipeline, hard filters, evidence, mock LLM, CLI
   discord/             # bot, views, embeds
-  models/              # Job, Approval, Application
-  services/            # JobService, ApprovalService
-  database/            # SQLAlchemy engine/session
+  models/              # Job, Approval, Application, ScoutEvaluationRecord
+  services/            # JobService, ApprovalService, ScoutEvaluationService
 data/
-  candidate_profile.example.json
-  application_answers.example.json
+  candidate_profile.example.json   # sanitized schema example (committed)
+  candidate_profile.json           # private local profile (gitignored)
+  fixtures/scout/                  # manual job fixtures for Scout tests
+docs/FACTUAL_INTEGRITY.md
 tests/
 ```
 
@@ -100,7 +108,8 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env with your Discord credentials
+cp data/candidate_profile.example.json data/candidate_profile.json
+# Edit .env and fill verified facts into candidate_profile.json
 ```
 
 ## Environment variables
@@ -112,9 +121,17 @@ cp .env.example .env
 | `DISCORD_CHANNEL_ID` | Optional | Channel for future job notifications |
 | `APP_ENV` | No | `development` (default) |
 | `DATABASE_URL` | No | Default `sqlite:///./data/ai_job_agent.db` |
-| `ENABLE_TEST_COMMANDS` | No | Enables `/testjob` (default `true`) |
-| `API_HOST` | No | Default `127.0.0.1` |
-| `API_PORT` | No | Default `8000` |
+| `ENABLE_TEST_COMMANDS` | No | Enables `/testjob` and `/scout-test` (default `true`) |
+| `CANDIDATE_PROFILE_PATH` | No | Default `./data/candidate_profile.json` |
+| `API_HOST` / `API_PORT` | No | FastAPI bind defaults |
+| `LLM_PROVIDER` | No | `mock` (default) or `openai` |
+| `LLM_MODEL` | No | Model name when using a paid provider |
+| `OPENAI_API_KEY` | No | Only if `LLM_PROVIDER=openai` |
+| `SCOUT_EVALUATOR_VERSION` | No | Default `2a.1` |
+| `SCOUT_MIN_QUALIFICATION_SCORE` | No | Default `55` |
+| `SCOUT_MIN_DESIRABILITY_SCORE` | No | Default `50` |
+| `SCOUT_STRONG_QUALIFICATION_SCORE` | No | Default `80` |
+| `SCOUT_STRONG_DESIRABILITY_SCORE` | No | Default `75` |
 
 ## Running locally
 
@@ -123,17 +140,9 @@ cp .env.example .env
 ```bash
 source .venv/bin/activate
 python -m app.main
-# or: uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Health check: `GET http://127.0.0.1:8000/health`
-
 ### Discord bot
-
-1. Create a Discord application + bot at https://discord.com/developers/applications
-2. Enable needed OAuth scopes (`bot`, `applications.commands`) and invite the bot to your server
-3. Set `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` in `.env`
-4. Run:
 
 ```bash
 source .venv/bin/activate
@@ -146,9 +155,27 @@ Slash commands:
 | --- | --- |
 | `/status` | Basic system status |
 | `/jobs` | Jobs awaiting approval |
-| `/testjob` | Dev-only: insert a fake recommendation and post Approve/Reject buttons |
+| `/testjob` | Dev-only: insert a fake recommendation |
+| `/scout-test` | Dev-only: evaluate a Scout fixture and show scores |
 
-**APPROVE** persists an `Approval` record, transitions `AWAITING_APPROVAL → APPROVED`, updates the embed, and disables action buttons. **REJECT** transitions to `REJECTED` and disables buttons.
+### Scout test harness (CLI)
+
+```bash
+source .venv/bin/activate
+
+# Strong backend match
+python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_a_strong_backend.json
+
+# High qualification / low desirability (uses remote-required test profile)
+python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_c_onsite_undesirable.json \
+  --profile data/fixtures/profiles/test_remote_required.json
+
+# Missing salary/remote info
+python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_d_missing_info.json
+
+# Persist evaluation (still requires Discord APPROVE to authorize)
+python -m app.agents.scout.evaluate_job data/fixtures/scout/fixture_a_strong_backend.json --persist
+```
 
 ## Tests
 
@@ -157,30 +184,31 @@ source .venv/bin/activate
 pytest -v
 ```
 
-Coverage focuses on the state machine and approval boundary (unapproved / recommended / cross-job / duplicate / rejected cases).
+## Current scope
 
-## Candidate profile & application answers
+### Phase 1 (complete)
 
-- `data/candidate_profile.example.json` — future authoritative career facts for the Resume Agent.
-  - **Rule:** the Resume Agent may select, reorder, summarize, and rephrase verified facts, but may **never invent** skills, experience, employers, dates, certifications, education, metrics, or accomplishments.
-- `data/application_answers.example.json` — recurring application fields (work auth, sponsorship, relocation, arrangement). No demographic/sensitive answers. Unknown questions must eventually yield `NEEDS_USER`, not guesses.
-
-## Current Phase 1 scope
-
-- Project structure and configuration
-- SQLAlchemy models + SQLite (PostgreSQL-ready URL)
-- Validated job state machine
-- Persistent approval records + `can_enter_application_pipeline`
-- Discord bot control plane (`/status`, `/jobs`, `/testjob`, Approve/Reject)
+- Discord control plane + approval boundary
+- Job state machine
 - Agent placeholders with authorization checks
-- Example profile/answers JSON
-- pytest suite for the approval invariant
 
-## Future phases (not started)
+### Phase 2A (this iteration)
 
-- **Phase 2:** Scout Agent real discovery + scoring
-- **Phase 3:** Resume Agent (verified-facts-only generation)
-- **Phase 4:** Applicant Agent (browser automation, `NEEDS_USER` pauses)
-- PostgreSQL in production, richer audit trails, recovery path for rejected jobs (only if explicitly designed)
+- Candidate profile schema + private local profile
+- Preferences schema with UNKNOWN-safe semantics
+- Normalized job + Scout evaluation schemas
+- Hard filters, skill aliases, evidence matching
+- Qualification vs desirability scoring
+- Mock LLM evaluator + optional OpenAI abstraction
+- Scout evaluation persistence
+- CLI + `/scout-test` harness
+- Fixtures A–F
 
-Do not begin Phase 2 without explicit approval.
+### Not started
+
+- Autonomous job-board discovery / scraping
+- Playwright / application submission
+- Resume generation
+- Feedback-learning algorithms
+
+Do not begin Phase 2B (autonomous discovery) without explicit approval.

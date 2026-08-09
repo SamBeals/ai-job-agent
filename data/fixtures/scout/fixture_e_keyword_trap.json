@@ -1,0 +1,25 @@
+{
+  "external_id": "fixture-e-keyword-trap",
+  "source": "fixture",
+  "source_url": "https://example.com/jobs/frontend-node",
+  "company": "Pixel River",
+  "title": "Senior JavaScript Engineer",
+  "location": "Remote - US",
+  "remote_status": "remote",
+  "employment_type": "full_time",
+  "salary_min": 140000,
+  "salary_max": 170000,
+  "salary_currency": "USD",
+  "description": "Frontend/Node focused role. Java experience is not a substitute.",
+  "responsibilities": [
+    "Build React SPAs",
+    "Develop Node.js services",
+    "Own JavaScript frontend architecture"
+  ],
+  "required_skills": ["JavaScript", "React", "Node.js"],
+  "preferred_skills": ["TypeScript", "GraphQL"],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": "senior",
+  "industry": "software"
+}

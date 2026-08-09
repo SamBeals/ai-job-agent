@@ -1,0 +1,68 @@
+{
+  "schema_version": "2a.1",
+  "identity": {
+    "full_name": "Test Candidate",
+    "location": "Cave Creek, Arizona"
+  },
+  "professional_summary": "Test profile for remote-required desirability isolation.",
+  "work_experience": [
+    {
+      "company": "Allstate",
+      "title": "Product Engineer (Software)",
+      "location": "Phoenix, Arizona",
+      "employment_type": "full_time",
+      "start_date": "2020-10",
+      "end_date": null,
+      "is_current": true,
+      "verified_accomplishments": [
+        "Led backend development of Java services.",
+        "Designed and optimized RESTful APIs.",
+        "Collaborated with DevOps teams to build, deploy, and validate Java services on Kubernetes running in AWS."
+      ],
+      "technologies": ["Java", "Spring Boot", "REST APIs", "SQL", "Kubernetes", "AWS"]
+    },
+    {
+      "company": "American Express",
+      "title": "Software Engineer",
+      "location": "Phoenix, Arizona",
+      "employment_type": "contract",
+      "start_date": "2018-09",
+      "end_date": "2020-10",
+      "is_current": false,
+      "verified_accomplishments": [
+        "Automated regression and performance testing using Selenium, JUnit, and TestNG."
+      ],
+      "technologies": ["Selenium", "JUnit", "TestNG", "Agile"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Northern Arizona University",
+      "degree": "Bachelor's",
+      "field": "Computer Science",
+      "location": "Flagstaff, Arizona",
+      "start_date": "2014",
+      "end_date": "2018",
+      "status": "completed"
+    }
+  ],
+  "skills": {
+    "languages": ["Java", "JavaScript", "Python", "SQL"],
+    "frameworks": ["Spring Boot", "JUnit", "Selenium"],
+    "cloud_and_infra": ["AWS", "Kubernetes", "Docker", "Terraform"],
+    "databases": ["PostgreSQL", "MongoDB"],
+    "practices": ["REST API Design", "Agile", "CI/CD"]
+  },
+  "certifications": [],
+  "projects": [],
+  "preferences": {
+    "target_roles": ["Software Engineer", "Backend Engineer", "Product Engineer"],
+    "remote_required": true,
+    "hybrid_allowed": false,
+    "onsite_allowed": false,
+    "relocation_allowed": false,
+    "home_location": "Cave Creek, Arizona",
+    "minimum_base_salary": null,
+    "notes": "TEST PROFILE ONLY — remote_required used to prove qualification/desirability independence."
+  }
+}

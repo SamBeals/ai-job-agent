@@ -162,6 +162,11 @@ class Job(Base):
 
     approvals = relationship("Approval", back_populates="job", lazy="selectin")
     applications = relationship("Application", back_populates="job", lazy="selectin")
+    scout_evaluations = relationship(
+        "ScoutEvaluationRecord",
+        back_populates="job",
+        lazy="selectin",
+    )
 
     @property
     def status_enum(self) -> JobStatus:

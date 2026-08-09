@@ -1,0 +1,26 @@
+{
+  "external_id": "fixture-c-onsite-undesirable",
+  "source": "fixture",
+  "source_url": "https://example.com/jobs/java-backend-onsite",
+  "company": "Midwest Mutual",
+  "title": "Senior Java Backend Engineer",
+  "location": "Chicago, IL",
+  "remote_status": "onsite",
+  "employment_type": "full_time",
+  "salary_min": 155000,
+  "salary_max": 175000,
+  "salary_currency": "USD",
+  "description": "Strong Java/Spring Boot backend role requiring 5 days/week onsite in Chicago.",
+  "responsibilities": [
+    "Build Java Spring Boot services",
+    "Design REST APIs",
+    "Deploy to AWS Kubernetes"
+  ],
+  "required_skills": ["Java", "Spring Boot", "REST APIs", "AWS", "Kubernetes", "SQL"],
+  "preferred_skills": ["Docker"],
+  "required_years_experience": 5,
+  "education_requirements": ["Bachelor's degree in Computer Science"],
+  "seniority": "senior",
+  "industry": "insurance",
+  "requires_relocation": true
+}

@@ -1,0 +1,24 @@
+{
+  "external_id": "fixture-b-ml-research",
+  "source": "fixture",
+  "source_url": "https://example.com/jobs/ml-research-scientist",
+  "company": "DeepTheory Labs",
+  "title": "Senior Machine Learning Research Scientist",
+  "location": "Remote - US",
+  "remote_status": "remote",
+  "employment_type": "full_time",
+  "salary_min": 200000,
+  "salary_max": 260000,
+  "salary_currency": "USD",
+  "description": "Lead original deep learning research and publish results.",
+  "responsibilities": [
+    "Publish peer-reviewed ML research",
+    "Develop novel deep learning architectures in PyTorch"
+  ],
+  "required_skills": ["PyTorch", "deep learning research", "published ML papers"],
+  "preferred_skills": ["CUDA", "JAX"],
+  "required_years_experience": 5,
+  "education_requirements": ["PhD in Machine Learning or related field"],
+  "seniority": "senior",
+  "industry": "research"
+}

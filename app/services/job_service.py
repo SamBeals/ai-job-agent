@@ -37,7 +37,16 @@ class JobService:
         recommendation_reason: str | None = None,
         status: JobStatus = JobStatus.DISCOVERED,
     ) -> Job:
-        """Create and persist a new job."""
+        """Create and persist a new job.
+
+        Refuses to create jobs already in APPROVED status — approval must go
+        through ApprovalService after AWAITING_APPROVAL.
+        """
+        if status == JobStatus.APPROVED:
+            raise PermissionError(
+                "Cannot create a job already in APPROVED status. "
+                "Use ApprovalService.approve_job() after AWAITING_APPROVAL."
+            )
         now = datetime.now(timezone.utc)
         job = Job(
             company=company,

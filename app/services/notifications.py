@@ -140,13 +140,18 @@ class DiscordWebhookNotificationService:
                 event.work_item_id,
                 event.pipeline_id,
             )
-        except Exception:  # noqa: BLE001
-            logger.exception(
-                "agent_notification_failed kind=%s agent=%s work_item_id=%s pipeline_id=%s",
+        except Exception as exc:  # noqa: BLE001
+            # Never log exception objects that may embed the webhook URL (httpx).
+            from app.logging_config import redact_secrets
+
+            logger.error(
+                "agent_notification_failed kind=%s agent=%s work_item_id=%s "
+                "pipeline_id=%s error=%s",
                 event.kind,
                 event.agent_type,
                 event.work_item_id,
                 event.pipeline_id,
+                redact_secrets(f"{type(exc).__name__}: {exc}"),
             )
 
     def _post(self, payload: dict[str, Any]) -> None:

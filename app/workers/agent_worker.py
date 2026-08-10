@@ -264,11 +264,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll", type=float, default=None, help="Poll interval seconds")
     parser.add_argument("--once", action="store_true", help="Process at most one item then exit")
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    )
+    from app.logging_config import configure_logging, register_secret_value
+
+    configure_logging()
     settings = get_settings()
+    register_secret_value(settings.discord_agent_webhook_url)
+    register_secret_value(settings.discord_bot_token)
+    register_secret_value(settings.openai_api_key)
+    register_secret_value(settings.adzuna_app_key)
+    register_secret_value(settings.discovery_adzuna_app_key)
     poll = args.poll if args.poll is not None else settings.agent_worker_poll_seconds
     max_attempts = settings.agent_max_attempts
     if args.once:

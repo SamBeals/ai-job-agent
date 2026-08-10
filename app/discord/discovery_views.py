@@ -10,7 +10,7 @@ import discord
 from app.agents.discovery.scout_bridge import dismiss_discovery_result, scout_discovery_result
 from app.config import Settings, get_settings
 from app.database.database import SessionLocal
-from app.discord.embeds import scout_evaluation_embed, scout_evaluation_failed_embed
+from app.discord.embeds import scout_evaluation_embed
 from app.discord.views import JobActionView
 from app.models.discovery import DiscoveryResult, DiscoveryRun
 from app.models.job import JobStatus
@@ -189,33 +189,35 @@ class DiscoveryResultView(discord.ui.View):
                     return
                 assert outcome.job is not None and outcome.evaluation is not None
                 embed = scout_evaluation_embed(outcome.job, outcome.evaluation)
-                view = (
-                    JobActionView(outcome.job.id, outcome.job.job_url, timeout=None)
-                    if outcome.job.status_enum == JobStatus.AWAITING_APPROVAL
-                    else None
-                )
+                send_kwargs: dict = {
+                    "content": (
+                        "**Scout evaluation** (from Discovery)\n"
+                        "Scout recommendation is **not** authorization. "
+                        "Only **APPROVE** authorizes this exact job."
+                    ),
+                    "embed": embed,
+                    "ephemeral": True,
+                }
+                if outcome.job.status_enum == JobStatus.AWAITING_APPROVAL:
+                    send_kwargs["view"] = JobActionView(
+                        outcome.job.id, outcome.job.job_url, timeout=None
+                    )
                 if interaction.message:
                     row = session.get(DiscoveryResult, self.result_id)
                     if row:
                         await interaction.message.edit(
                             embed=discovery_result_embed(row),
-                            view=self.disabled_view(self.result_id, row.open_url, label="SCOUTED"),
+                            view=self.disabled_view(
+                                self.result_id, row.open_url, label="SCOUTED"
+                            ),
                         )
-                await interaction.followup.send(
-                    content=(
-                        "**Scout evaluation** (from Discovery)\n"
-                        "Scout recommendation is **not** authorization. "
-                        "Only **APPROVE** authorizes this exact job."
-                    ),
-                    embed=embed,
-                    view=view,
-                    ephemeral=True,
-                )
+                await interaction.followup.send(**send_kwargs)
         except Exception:  # noqa: BLE001
             logger.exception("discovery scout_this failed result_id=%s", self.result_id)
             await interaction.followup.send(
-                embed=scout_evaluation_failed_embed(
-                    detail="Scout could not evaluate this Discovery result."
+                content=(
+                    "Scout could not finish presenting this Discovery result.\n"
+                    "Technical details were logged locally."
                 ),
                 ephemeral=True,
             )

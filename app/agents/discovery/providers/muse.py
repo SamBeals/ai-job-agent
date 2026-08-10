@@ -14,12 +14,15 @@ from app.agents.discovery.providers.common import (
     title_matches_discovery_query,
 )
 from app.agents.discovery.providers.html_utils import strip_html
+from app.agents.discovery.queries import plan_broad_search_logical_queries
 from app.schemas.discovery import DiscoveryQuery, RawDiscoveryResult
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CATEGORY = "Software Engineering"
 _MAX_PAGES = 3
+# Cap remote Muse pages lower than local so local search dominates budget.
+_REMOTE_MAX_PAGES = 1
 
 
 class MuseDiscoveryProvider:
@@ -45,26 +48,47 @@ class MuseDiscoveryProvider:
 
     def search(self, query: DiscoveryQuery) -> list[RawDiscoveryResult]:
         started = time.monotonic()
-        logger.info("discovery_provider_started provider=muse")
-        locations = _location_queries(query)
-        role_queries = _role_queries(query)
+        logical = plan_broad_search_logical_queries(query)
+        local_n = sum(1 for q in logical if q["bucket"] == "local")
+        remote_n = sum(1 for q in logical if q["bucket"] == "remote")
+        logger.info(
+            "discovery_provider_started provider=muse local_queries=%s remote_queries=%s",
+            local_n,
+            remote_n,
+        )
         out: list[RawDiscoveryResult] = []
         seen_ids: set[str] = set()
 
         try:
             with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True) as client:
-                for loc in locations:
-                    for role in role_queries:
-                        page_jobs = self._search_pages(client, location=loc, role=role)
-                        for mapped in page_jobs:
-                            if mapped.external_id in seen_ids:
-                                continue
-                            if not title_matches_discovery_query(mapped.title, query):
-                                continue
-                            seen_ids.add(mapped.external_id)
-                            out.append(mapped)
-                            if len(out) >= query.max_raw_results:
-                                break
+                for item in logical:
+                    bucket = item.get("bucket") or "local"
+                    loc = item.get("location")
+                    role = item.get("role")
+                    max_pages = self.max_pages if bucket == "local" else min(
+                        self.max_pages, _REMOTE_MAX_PAGES
+                    )
+                    page_jobs = self._search_pages(
+                        client,
+                        location=loc if isinstance(loc, str) else None,
+                        role=role if isinstance(role, str) else None,
+                        max_pages=max_pages,
+                    )
+                    for mapped in page_jobs:
+                        if mapped.external_id in seen_ids:
+                            continue
+                        if not title_matches_discovery_query(mapped.title, query):
+                            continue
+                        mapped = mapped.model_copy(
+                            update={
+                                "raw_metadata": {
+                                    **(mapped.raw_metadata or {}),
+                                    "search_bucket": bucket,
+                                }
+                            }
+                        )
+                        seen_ids.add(mapped.external_id)
+                        out.append(mapped)
                         if len(out) >= query.max_raw_results:
                             break
                     if len(out) >= query.max_raw_results:
@@ -92,9 +116,11 @@ class MuseDiscoveryProvider:
         *,
         location: str | None,
         role: str | None,
+        max_pages: int | None = None,
     ) -> list[RawDiscoveryResult]:
         out: list[RawDiscoveryResult] = []
-        for page in range(self.max_pages):
+        pages = self.max_pages if max_pages is None else max(1, max_pages)
+        for page in range(pages):
             params: dict[str, Any] = {"page": page, "category": self.category}
             if location:
                 params["location"] = location
@@ -184,43 +210,3 @@ class MuseDiscoveryProvider:
             },
         )
 
-
-def _location_queries(query: DiscoveryQuery) -> list[str | None]:
-    """Prefer Phoenix-metro terms from planner; always include US Remote if allowed."""
-    preferred = []
-    for term in query.location_terms or []:
-        t = term.strip()
-        if not t:
-            continue
-        # Muse expects "City, ST" style for best results
-        preferred.append(t)
-        if len(preferred) >= 4:
-            break
-    if not preferred:
-        preferred = ["Phoenix, AZ", "Chandler, AZ"]
-    # Deduplicate while preserving order
-    out: list[str | None] = []
-    seen: set[str] = set()
-    for p in preferred:
-        key = p.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(p)
-    if query.include_remote:
-        out.append(None)  # category-only page for broader remote mix
-    return out
-
-
-def _role_queries(query: DiscoveryQuery) -> list[str | None]:
-    roles = [r.strip() for r in (query.role_terms or []) if r and r.strip()]
-    if not roles:
-        return [None]
-    # Muse search is category-primary; use a couple of role hints only
-    picks = []
-    for r in roles:
-        if any(x in r.lower() for x in ("backend", "software", "java")):
-            picks.append(r)
-        if len(picks) >= 2:
-            break
-    return picks or [roles[0], None]

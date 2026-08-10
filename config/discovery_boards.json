@@ -2,9 +2,14 @@
   "schema_version": "discovery.boards.1",
   "notes": [
     "Employer/ATS tenants only — never hardcoded jobs.",
-    "metro hints are for coverage planning; Discovery still fetches live openings."
+    "metro hints are for coverage planning; Discovery still fetches live openings.",
+    "Phoenix-metro entries verified against public Greenhouse/Lever/Ashby APIs (Phase 3.4)."
   ],
   "greenhouse": [
+    {"company": "Axon", "board": "axon", "metro": "scottsdale", "enabled": true},
+    {"company": "Carvana", "board": "carvana", "metro": "tempe", "enabled": true},
+    {"company": "GoDaddy", "board": "godaddy", "metro": "phoenix", "enabled": true},
+    {"company": "Waymo", "board": "waymo", "metro": "phoenix", "enabled": true},
     {"company": "Stripe", "board": "stripe", "metro": null, "enabled": true},
     {"company": "Datadog", "board": "datadog", "metro": null, "enabled": true},
     {"company": "Cloudflare", "board": "cloudflare", "metro": null, "enabled": true},
@@ -13,18 +18,21 @@
     {"company": "Twilio", "board": "twilio", "metro": null, "enabled": true},
     {"company": "Airbnb", "board": "airbnb", "metro": null, "enabled": true},
     {"company": "Discord", "board": "discord", "metro": null, "enabled": true},
-    {"company": "GoDaddy", "board": "godaddy", "metro": "phoenix", "enabled": true},
     {"company": "Block", "board": "block", "metro": null, "enabled": true},
     {"company": "Affirm", "board": "affirm", "metro": null, "enabled": true},
     {"company": "Chime", "board": "chime", "metro": null, "enabled": true},
-    {"company": "SoFi", "board": "sofi", "metro": null, "enabled": true}
+    {"company": "SoFi", "board": "sofi", "metro": null, "enabled": true},
+    {"company": "New Relic", "board": "newrelic", "metro": null, "enabled": true},
+    {"company": "Ping Identity", "board": "pingidentity", "metro": null, "enabled": true}
   ],
   "lever": [
+    {"company": "GoHighLevel", "site": "gohighlevel", "metro": "gilbert", "enabled": true},
     {"company": "Palantir", "site": "palantir", "metro": null, "enabled": true},
     {"company": "Spotify", "site": "spotify", "metro": null, "enabled": true},
     {"company": "Zoox", "site": "zoox", "metro": null, "enabled": true}
   ],
   "ashby": [
+    {"company": "Virtuous", "board": "virtuous", "metro": "phoenix", "enabled": true},
     {"company": "Notion", "board": "notion", "metro": null, "enabled": true},
     {"company": "Linear", "board": "linear", "metro": null, "enabled": true},
     {"company": "Ramp", "board": "ramp", "metro": null, "enabled": true},

@@ -59,7 +59,11 @@ class DiscoveryQuery(BaseModel):
 
     role_terms: list[str] = Field(default_factory=list)
     location_terms: list[str] = Field(default_factory=list)
+    # Normalized City, ST terms for Type-B local search (profile-derived).
+    local_location_terms: list[str] = Field(default_factory=list)
     include_remote: bool = True
+    # When True, broad providers spend request budget on local before remote.
+    prioritize_local_search: bool = True
     minimum_base_salary: int | None = None
     prefers_backend: bool | None = None
     prefers_software_development: bool | None = None

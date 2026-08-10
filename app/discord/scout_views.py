@@ -212,8 +212,8 @@ async def run_scout_ingestion(
                 if result.job.status_enum == JobStatus.AWAITING_APPROVAL
                 else None
             )
-            await interaction.followup.send(
-                content=(
+            send_kwargs: dict = {
+                "content": (
                     f"**Scout evaluation** (`{source_label}`)\n"
                     f"Extraction: `{extraction.extraction_method.value}` "
                     f"/ confidence `{extraction.extraction_confidence.value}`\n"
@@ -223,10 +223,12 @@ async def run_scout_ingestion(
                     "Scout recommendation is **not** authorization. "
                     "Only **APPROVE** authorizes this exact job."
                 ),
-                embed=embed,
-                view=view,
-                ephemeral=True,
-            )
+                "embed": embed,
+                "ephemeral": True,
+            }
+            if view is not None:
+                send_kwargs["view"] = view
+            await interaction.followup.send(**send_kwargs)
     except IngestionError as exc:
         logger.warning("scout ingestion failed: %s", exc)
         await interaction.followup.send(str(exc), ephemeral=True)

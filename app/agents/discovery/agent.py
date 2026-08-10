@@ -315,7 +315,19 @@ class DiscoveryAgent:
             "remote_eligible": 0,
             "remote_unknown": 0,
             "preferred_metro_candidates": 0,
+            "local_employer_registry_hits": 0,
+            "broad_local_search_hits": 0,
+            "us_remote_hits": 0,
         }
+        _METRO_CODES = {
+            "CHANDLER",
+            "PHOENIX_METRO",
+            "PREFERRED_METRO",
+            "LOCAL_HYBRID",
+            "LOCAL_ONSITE",
+            "ACCEPTABLE_METRO",
+        }
+        _REGISTRY_PROVIDERS = {"greenhouse", "lever", "ashby"}
         for raw in raw_all:
             cand = prefilter_candidate(profile, raw)
             if cand.filtered:
@@ -334,10 +346,18 @@ class DiscoveryAgent:
             codes = set(scored.reason_codes or [])
             if "US_REMOTE" in codes:
                 geo_diag["remote_eligible"] += 1
+                geo_diag["us_remote_hits"] += 1
             if "REMOTE_ELIGIBILITY_UNKNOWN" in codes:
                 geo_diag["remote_unknown"] += 1
-            if codes & {"CHANDLER", "PHOENIX_METRO", "PREFERRED_METRO", "LOCAL_HYBRID", "LOCAL_ONSITE", "ACCEPTABLE_METRO"}:
+            in_metro = bool(codes & _METRO_CODES)
+            if in_metro:
                 geo_diag["preferred_metro_candidates"] += 1
+                if scored.raw.provider in _REGISTRY_PROVIDERS:
+                    geo_diag["local_employer_registry_hits"] += 1
+                elif (scored.raw.raw_metadata or {}).get("search_bucket") == "local":
+                    geo_diag["broad_local_search_hits"] += 1
+                elif scored.raw.provider in {"muse", "adzuna"}:
+                    geo_diag["broad_local_search_hits"] += 1
             kept.append(scored)
         run.filtered_result_count = len(kept)
 
@@ -347,6 +367,8 @@ class DiscoveryAgent:
             pname = cand.raw.provider
             bucket = provider_stats.setdefault(pname, {"raw": 0, "ok": 1, "failed": 0})
             bucket["normalized"] = int(bucket.get("normalized", 0)) + 1
+            if set(cand.reason_codes or {}) & _METRO_CODES:
+                bucket["preferred_metro"] = int(bucket.get("preferred_metro", 0)) + 1
 
         deduped = dedupe_within_run(kept)
         run.deduplicated_result_count = len(deduped)
@@ -359,6 +381,8 @@ class DiscoveryAgent:
             pname = cand.raw.provider
             bucket = provider_stats.setdefault(pname, {"raw": 0, "ok": 1, "failed": 0})
             bucket["quality"] = int(bucket.get("quality", 0)) + 1
+            # Track newly surfaced-eligible (pre-suppression) for live validation logs
+            bucket["quality_new_eligible"] = int(bucket.get("quality_new_eligible", 0)) + 1
 
         previously_seen = 0
         missing_url = 0

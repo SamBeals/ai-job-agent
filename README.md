@@ -85,7 +85,7 @@ flowchart TB
 
 **Discovery finds opportunities. Scout evaluates. Human approves preparation. Resume prepares. Submission stays separately locked.**
 
-### Discovery providers (Phase 3.2 / 3.3)
+### Discovery providers (Phase 3.2–3.4)
 
 | Provider | Auth | Why selected | Limitations |
 | --- | --- | --- | --- |
@@ -93,13 +93,15 @@ flowchart TB
 | **Lever Postings API** | None | Official public JSON; hosted + apply URLs; descriptions | Requires known site slugs |
 | **Ashby Job Postings API** | None | Official public JSON; workplace type; optional compensation | Requires known board names |
 | **Remotive public API** | None | Real remote software jobs; structured JSON | Remote-only; salary often free-text |
-| **The Muse public Jobs API** | None | Broad category + location search (Phoenix/Chandler capable) | Muse landing URLs; noisy mix — filters required |
+| **The Muse public Jobs API** | None | Broad category + **local-first** preferred-metro search; US remote secondary | Muse landing URLs; noisy mix — filters required |
 | **Adzuna** (optional) | `app_id` + `app_key` | Strong geo search | Free tier limits + attribution rules; off by default |
 | **Fake** | n/a | Deterministic tests | Not live |
 
-Rejected for this phase: LinkedIn/Indeed HTML scraping, CAPTCHA bypass, brittle page scraping. Workday CXS deferred (undocumented / fragile). See `docs/discovery-provider-research.md`.
+Rejected for this phase: LinkedIn/Indeed HTML scraping, CAPTCHA bypass, brittle page scraping. **Workday** is the recommended *next* ATS (unlocks Intel/NXP/enterprise Phoenix boards) but is not implemented yet. See `docs/discovery-provider-research.md` and `docs/phoenix-employer-coverage.md`.
 
-Employer tenants live in `config/discovery_boards.json` (merged with env overrides). Jobs are never hardcoded.
+Employer tenants live in `config/discovery_boards.json` (merged with env overrides). Jobs are never hardcoded. Phoenix-metro registry entries (Axon, Carvana, GoDaddy, Waymo, GoHighLevel, Virtuous, …) expand local coverage without changing filters.
+
+**Secret-safe logging:** bot/worker call `configure_logging()` — httpx/httpcore are WARNING+, and Discord webhook URLs / API keys are redacted from log records.
 
 Config: `DISCOVERY_PROVIDER`, `DISCOVERY_BOARDS_PATH`, per-provider `DISCOVERY_*_ENABLED`, `DISCOVERY_MIN_SURFACE_SCORE`, etc. (see `.env.example`).
 

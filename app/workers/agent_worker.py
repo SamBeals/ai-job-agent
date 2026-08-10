@@ -32,10 +32,7 @@ class PermanentWorkError(Exception):
 def process_one(*, worker_id: str, max_attempts: int) -> bool:
     """Claim and process one work item. Returns True if work was processed."""
     settings = get_settings()
-    notifications = build_notification_service(
-        bot_token=settings.discord_bot_token,
-        channel_id=settings.discord_channel_id,
-    )
+    notifications = build_notification_service(settings)
 
     with SessionLocal() as session:
         work_items = WorkItemService(session)
@@ -57,10 +54,7 @@ def process_one(*, worker_id: str, max_attempts: int) -> bool:
 
     # Fresh session for agent work so notification failures after commit are safe
     with SessionLocal() as session:
-        notifications = build_notification_service(
-            bot_token=settings.discord_bot_token,
-            channel_id=settings.discord_channel_id,
-        )
+        notifications = build_notification_service(settings)
         orchestrator = PipelineOrchestrator(session, notifications=notifications)
         work_items = WorkItemService(session)
         item = work_items.get(item.id)
@@ -100,10 +94,7 @@ def process_one(*, worker_id: str, max_attempts: int) -> bool:
             with SessionLocal() as fail_session:
                 fail_orch = PipelineOrchestrator(
                     fail_session,
-                    notifications=build_notification_service(
-                        bot_token=settings.discord_bot_token,
-                        channel_id=settings.discord_channel_id,
-                    ),
+                    notifications=build_notification_service(settings),
                 )
                 fail_orch.on_work_item_failed(
                     item.id,
@@ -118,10 +109,7 @@ def process_one(*, worker_id: str, max_attempts: int) -> bool:
             with SessionLocal() as fail_session:
                 fail_orch = PipelineOrchestrator(
                     fail_session,
-                    notifications=build_notification_service(
-                        bot_token=settings.discord_bot_token,
-                        channel_id=settings.discord_channel_id,
-                    ),
+                    notifications=build_notification_service(settings),
                 )
                 fail_orch.on_work_item_failed(
                     item.id,

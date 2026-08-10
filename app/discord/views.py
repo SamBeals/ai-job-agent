@@ -81,10 +81,7 @@ class JobActionView(discord.ui.View):
                     discord_message_id=str(interaction.message.id) if interaction.message else None,
                     discord_user_id=str(user.id),
                 )
-                notifications = build_notification_service(
-                    bot_token=settings.discord_bot_token,
-                    channel_id=settings.discord_channel_id,
-                )
+                notifications = build_notification_service(settings)
                 orch = PipelineOrchestrator(session, notifications=notifications)
                 try:
                     orch_result = orch.on_job_preparation_approved(self.job_id)

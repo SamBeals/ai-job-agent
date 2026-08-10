@@ -17,6 +17,34 @@ Narrow agents cooperate through **persisted structured state** — not free-form
 
 Discord is the control room.
 
+## Discord architecture — one bot + one webhook
+
+```text
+                 Discord
+                    │
+       ┌────────────┴────────────┐
+       │                         │
+ai-job-agent bot           Agent Webhook
+CONTROL PLANE              ACTIVITY FEED
+       │                         │
+commands / buttons         dynamic identity
+approvals                  per AgentType
+/pipeline*                 (username + optional avatar)
+```
+
+| Surface | Role |
+| --- | --- |
+| **Bot** | Slash commands, APPROVE/REJECT, interactive components |
+| **Webhook** (`DISCORD_AGENT_WEBHOOK_URL`) | Agent activity posts as Scout / Resume Agent / etc. |
+
+Webhook usernames/avatars are **presentation identities** for real internal agents — not separate Discord applications.
+
+Interactive Scout cards with **APPROVE** stay on the real bot. Webhook messages are activity-only (no buttons).
+
+Treat `DISCORD_AGENT_WEBHOOK_URL` as a secret (never commit, log, or expose via `/status`).
+
+Optional avatars: `SCOUT_AVATAR_URL`, `RESUME_AVATAR_URL`, `RESUME_REVIEW_AVATAR_URL`, `APPLICANT_AVATAR_URL`, `DISCOVERY_AVATAR_URL`, `TRACKER_AVATAR_URL`.
+
 ## Authorization — two human gates
 
 | Gate | Meaning | Record |
@@ -77,13 +105,13 @@ python -m app.workers.agent_worker
 
 Then in Discord:
 
-1. `/scout-test` → evaluate a job
-2. Click **APPROVE** (Gate 1)
-3. See preparation approved + Resume Agent queued
-4. Worker claims work → ResumePlan persisted
+1. `/scout-test` → evaluate a job (control bot)
+2. Click **APPROVE** (Gate 1 — control bot)
+3. Worker claims Resume work → webhook posts as **Resume Agent — RUNNING**
+4. ResumePlan persists → webhook posts as **Resume Agent — COMPLETE**
 5. `/pipeline` · `/pipeline-status` · `/agents` · `/resume-plan`
 
-Submission remains **LOCKED**.
+Submission remains **LOCKED**. If the webhook URL is unset, the pipeline still runs; activity posts are skipped.
 
 ## Setup
 
@@ -102,9 +130,12 @@ API keys and the private profile belong only in gitignored local files.
 
 | Variable | Description |
 | --- | --- |
-| `DISCORD_BOT_TOKEN` | Bot token |
+| `DISCORD_BOT_TOKEN` | Bot token (control plane) |
 | `DISCORD_GUILD_ID` | Fast command sync |
-| `DISCORD_CHANNEL_ID` | Agent activity notifications (optional; pipeline still works if unset) |
+| `DISCORD_CHANNEL_ID` | Optional legacy channel id |
+| `DISCORD_AGENT_WEBHOOK_URL` | Agent activity webhook (**secret**) |
+| `DISCORD_WEBHOOK_TIMEOUT_SECONDS` | Webhook HTTP timeout (default 5) |
+| `*_AVATAR_URL` | Optional per-agent avatar overrides |
 | `LLM_PROVIDER` | `mock` or `openai` |
 | `OPENAI_API_KEY` | Required only for openai |
 | `AGENT_MAX_ATTEMPTS` | Work-item retry bound (default 3) |

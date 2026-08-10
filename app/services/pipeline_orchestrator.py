@@ -136,23 +136,41 @@ class PipelineOrchestrator:
                 job.transition_to(JobStatus.GENERATING_RESUME)
             self.session.flush()
 
-        self._notify(
-            NotificationEvent(
-                kind="work_item_started",
-                title="RESUME AGENT",
-                body=(
-                    f"Working on: {job.company if job else '?'} — "
-                    f"{job.title if job else '?'}\n"
-                    f"Task: Build tailored resume plan\n"
-                    f"Status: RUNNING\n"
-                    f"Pipeline #{pipeline.id} · work item #{item.id}"
-                ),
-                job_id=item.job_id,
+        # Truthful: only notify after work item is RUNNING (caller claims first)
+        from app.discord.agent_activity import resume_started_embeds
+        from app.schemas.agents import WorkItemStatus
+
+        if item.status != WorkItemStatus.RUNNING.value:
+            logger.warning(
+                "work_item_started called but status=%s id=%s — skipping activity notify",
+                item.status,
+                item.id,
+            )
+        else:
+            company = job.company if job else "?"
+            title = job.title if job else "?"
+            embeds = resume_started_embeds(
+                company=company,
+                title=title,
                 pipeline_id=pipeline.id,
                 work_item_id=item.id,
-                agent_type=item.agent_type,
             )
-        )
+            self._notify(
+                NotificationEvent(
+                    kind="work_item_started",
+                    title="RESUME AGENT",
+                    body=(
+                        f"Working on: {company} — {title}\n"
+                        f"Task: Build tailored resume plan\n"
+                        f"Status: RUNNING"
+                    ),
+                    job_id=item.job_id,
+                    pipeline_id=pipeline.id,
+                    work_item_id=item.id,
+                    agent_type=item.agent_type,
+                    metadata={"embeds": embeds, "status": "RUNNING"},
+                )
+            )
         return pipeline
 
     def on_resume_plan_completed(
@@ -177,22 +195,47 @@ class PipelineOrchestrator:
             job.transition_to(JobStatus.RESUME_READY)
         self.session.flush()
 
+        from app.discord.agent_activity import resume_completed_embeds
+        from app.models.resume_plan import ResumePlanRecord
+        from app.schemas.resume_plan import ResumePlan
+
+        plan: ResumePlan | None = None
+        record = self.session.get(ResumePlanRecord, resume_plan_id)
+        if record is not None:
+            plan = ResumePlan.model_validate(record.plan_json)
+
+        company = job.company if job else "?"
+        title = job.title if job else "?"
+        embeds = resume_completed_embeds(
+            company=company,
+            title=title,
+            pipeline_status=pipeline.status,
+            job_id=item.job_id,
+            plan=plan,
+        )
         # Intentionally do NOT create Applicant / submission work.
         self._notify(
             NotificationEvent(
                 kind="work_item_completed",
                 title="RESUME AGENT — COMPLETE",
                 body=(
-                    f"{job.company if job else '?'} — {job.title if job else '?'}\n"
-                    f"Resume strategy prepared (plan #{resume_plan_id}).\n"
-                    f"Pipeline status: {pipeline.status}\n"
-                    f"Submission: LOCKED (requires separate Gate 2 authorization)."
+                    f"{company} — {title}\n"
+                    f"Resume strategy prepared.\n"
+                    f"Pipeline: {pipeline.status}"
                 ),
                 job_id=item.job_id,
                 pipeline_id=pipeline.id,
                 work_item_id=item.id,
                 agent_type=item.agent_type,
-                metadata={"resume_plan_id": resume_plan_id},
+                metadata={
+                    "embeds": embeds,
+                    "resume_plan_id": resume_plan_id,
+                    "status": "COMPLETED",
+                    "emphasis": [
+                        i.text for i in (plan.priority_skills if plan else [])[:6]
+                    ],
+                    "avoid": list(plan.skills_not_to_claim) if plan else [],
+                },
             )
         )
         return pipeline
@@ -217,11 +260,11 @@ class PipelineOrchestrator:
         if pipeline is None:
             raise OrchestrationError(f"Pipeline {item.pipeline_id} not found")
 
+        job = self.session.get(Job, item.job_id)
         if item.status == WIS.FAILED.value:
             pipeline.status = PipelineStatus.FAILED.value
             pipeline.error_message = error_message
             pipeline.updated_at = datetime.now(timezone.utc)
-            job = self.session.get(Job, item.job_id)
             if job and job.status_enum in {
                 JobStatus.APPROVED,
                 JobStatus.GENERATING_RESUME,
@@ -232,22 +275,33 @@ class PipelineOrchestrator:
                     logger.warning("Could not transition job %s to FAILED", item.job_id)
             self.session.flush()
 
-        self._notify(
-            NotificationEvent(
-                kind="work_item_failed",
-                title="RESUME AGENT — FAILED",
-                body=(
-                    f"Work item #{item.id} failed.\n"
-                    f"Status: {item.status}\n"
-                    f"Error: {error_message}\n"
-                    f"Pipeline #{pipeline.id}"
-                ),
-                job_id=item.job_id,
+            from app.discord.agent_activity import resume_failed_embeds
+
+            company = job.company if job else "?"
+            title = job.title if job else "?"
+            embeds = resume_failed_embeds(
+                company=company,
+                title=title,
+                pipeline_status=pipeline.status,
                 pipeline_id=pipeline.id,
-                work_item_id=item.id,
-                agent_type=item.agent_type,
             )
-        )
+            # User-facing: no stack traces / secrets / raw provider errors
+            self._notify(
+                NotificationEvent(
+                    kind="work_item_failed",
+                    title="RESUME AGENT — FAILED",
+                    body=(
+                        f"{company} — {title}\n"
+                        "I couldn't complete the resume plan.\n"
+                        f"Pipeline status: {pipeline.status}"
+                    ),
+                    job_id=item.job_id,
+                    pipeline_id=pipeline.id,
+                    work_item_id=item.id,
+                    agent_type=item.agent_type,
+                    metadata={"embeds": embeds, "status": "FAILED"},
+                )
+            )
         return pipeline
 
     def get_pipeline_for_job(self, job_id: int) -> ApplicationPipeline | None:

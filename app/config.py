@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     discord_bot_token: str = ""
     discord_guild_id: str = ""
     discord_channel_id: str = ""
+    # Agent activity webhook (secret) — per-AgentType username/avatar overrides
+    discord_agent_webhook_url: str = ""
+    discord_webhook_timeout_seconds: float = 5.0
+    scout_avatar_url: str = ""
+    resume_avatar_url: str = ""
+    resume_review_avatar_url: str = ""
+    applicant_avatar_url: str = ""
+    discovery_avatar_url: str = ""
+    tracker_avatar_url: str = ""
 
     # Application
     app_env: str = "development"

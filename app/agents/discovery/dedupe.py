@@ -78,7 +78,8 @@ def dedupe_within_run(
     sorted_cands = sorted(candidates, key=lambda c: c.discovery_score, reverse=True)
     seen_urls: set[str] = set()
     seen_provider_ids: set[tuple[str, str]] = set()
-    seen_identity: set[str] = set()
+    # identity → provider that first claimed this fingerprint
+    seen_identity_owner: dict[str, str] = {}
     out: list[RankedDiscoveryCandidate] = []
 
     for cand in sorted_cands:
@@ -91,13 +92,21 @@ def dedupe_within_run(
             continue
         if provider_key in seen_provider_ids:
             continue
-        if identity in seen_identity:
-            continue
+        if identity in seen_identity_owner:
+            owner = seen_identity_owner[identity]
+            if owner != raw.provider:
+                # Cross-provider copy of the same posting (e.g. Muse + Workday).
+                continue
+            if not url:
+                # Same provider without a distinguishing URL — collapse.
+                continue
+            # Same provider, distinct canonical URL → distinct requisition; keep.
+        else:
+            seen_identity_owner[identity] = raw.provider
 
         if url:
             seen_urls.add(url)
         seen_provider_ids.add(provider_key)
-        seen_identity.add(identity)
         out.append(cand)
     return out
 

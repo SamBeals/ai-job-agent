@@ -18,6 +18,11 @@ class BoardEntry:
     tenant: str
     metro: str | None = None
     enabled: bool = True
+    # Workday / Oracle fields (optional for other ATS)
+    host: str | None = None
+    site: str | None = None
+    career_base_url: str | None = None
+    location_facet_ids: tuple[str, ...] = ()
 
 
 def load_discovery_boards(path: str | Path | None) -> dict[str, list[BoardEntry]]:
@@ -26,6 +31,8 @@ def load_discovery_boards(path: str | Path | None) -> dict[str, list[BoardEntry]
         "greenhouse": [],
         "lever": [],
         "ashby": [],
+        "workday": [],
+        "oracle": [],
     }
     if not path:
         return empty
@@ -59,6 +66,75 @@ def load_discovery_boards(path: str | Path | None) -> dict[str, list[BoardEntry]
                     enabled=True,
                 )
             )
+
+    for row in data.get("workday") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("enabled") is False:
+            continue
+        host = (row.get("host") or "").strip().lower()
+        tenant = (row.get("tenant") or "").strip()
+        site = (row.get("site") or "").strip()
+        company = (row.get("company") or tenant or host).strip()
+        if not host or not tenant or not site:
+            logger.warning(
+                "discovery_boards_workday_incomplete company=%s", company or "?"
+            )
+            continue
+        # Drop scheme if pasted
+        host = host.replace("https://", "").replace("http://", "").split("/")[0]
+        out["workday"].append(
+            BoardEntry(
+                ats="workday",
+                company=company or tenant,
+                tenant=tenant,
+                metro=(row.get("metro") or None),
+                enabled=True,
+                host=host,
+                site=site,
+            )
+        )
+
+    for row in data.get("oracle") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("enabled") is False:
+            continue
+        host = (row.get("host") or "").strip().lower()
+        site_number = (row.get("site_number") or row.get("tenant") or "").strip()
+        site_path = (row.get("site_path") or row.get("site") or site_number).strip()
+        career_base = (row.get("career_base_url") or "").strip().rstrip("/")
+        company = (row.get("company") or site_number or host).strip()
+        if not host or not site_number or not site_path or not career_base:
+            logger.warning(
+                "discovery_boards_oracle_incomplete company=%s", company or "?"
+            )
+            continue
+        host = host.replace("https://", "").replace("http://", "").split("/")[0]
+        if career_base.startswith("http://"):
+            career_base = "https://" + career_base[len("http://") :]
+        elif not career_base.startswith("https://"):
+            career_base = "https://" + career_base.lstrip("/")
+        facet_raw = row.get("location_facet_ids") or []
+        facets: list[str] = []
+        if isinstance(facet_raw, list):
+            for item in facet_raw:
+                s = str(item).strip()
+                if s:
+                    facets.append(s)
+        out["oracle"].append(
+            BoardEntry(
+                ats="oracle",
+                company=company or site_number,
+                tenant=site_number,
+                metro=(row.get("metro") or None),
+                enabled=True,
+                host=host,
+                site=site_path,
+                career_base_url=career_base,
+                location_facet_ids=tuple(facets),
+            )
+        )
     return out
 
 
@@ -95,4 +171,19 @@ def tenant_list(entries: list[BoardEntry]) -> list[str]:
 
 
 def as_debug_dict(data: dict[str, list[BoardEntry]]) -> dict[str, Any]:
-    return {k: [{"company": e.company, "tenant": e.tenant, "metro": e.metro} for e in v] for k, v in data.items()}
+    out: dict[str, Any] = {}
+    for k, entries in data.items():
+        rows = []
+        for e in entries:
+            row = {"company": e.company, "tenant": e.tenant, "metro": e.metro}
+            if e.host:
+                row["host"] = e.host
+            if e.site:
+                row["site"] = e.site
+            if e.career_base_url:
+                row["career_base_url"] = e.career_base_url
+            if e.location_facet_ids:
+                row["location_facet_ids"] = list(e.location_facet_ids)
+            rows.append(row)
+        out[k] = rows
+    return out

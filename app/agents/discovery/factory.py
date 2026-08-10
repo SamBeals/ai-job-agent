@@ -17,7 +17,12 @@ from app.agents.discovery.providers.fake import FakeDiscoveryProvider
 from app.agents.discovery.providers.greenhouse import GreenhouseDiscoveryProvider
 from app.agents.discovery.providers.lever import LeverDiscoveryProvider
 from app.agents.discovery.providers.muse import MuseDiscoveryProvider
+from app.agents.discovery.providers.oracle import (
+    OracleBoard,
+    OracleRecruitingDiscoveryProvider,
+)
 from app.agents.discovery.providers.remotive import RemotiveDiscoveryProvider
+from app.agents.discovery.providers.workday import WorkdayBoard, WorkdayDiscoveryProvider
 from app.config import Settings, get_settings
 
 
@@ -31,7 +36,7 @@ def build_discovery_providers(
     DISCOVERY_PROVIDER:
       - auto (default): all enabled providers with valid config
       - fake: deterministic test provider only
-      - comma-separated names: greenhouse,remotive,lever,ashby,muse,adzuna
+      - comma-separated names: greenhouse,remotive,lever,ashby,workday,oracle,muse,adzuna
     """
     settings = settings or get_settings()
     if force_fake or (settings.discovery_provider or "").strip().lower() == "fake":
@@ -49,6 +54,8 @@ def build_discovery_providers(
             "greenhouse",
             "lever",
             "ashby",
+            "workday",
+            "oracle",
             "remotive",
             "muse",
             "adzuna",
@@ -145,6 +152,58 @@ def _build_named(
                 **_parse_company_map(settings.discovery_ashby_company_names),
                 **company_map(entries),
             },
+        )
+
+    if name == "workday":
+        if not settings.discovery_workday_enabled:
+            return None
+        entries = registry.get("workday") or []
+        boards = [
+            WorkdayBoard(
+                company=e.company,
+                host=e.host or "",
+                tenant=e.tenant,
+                site=e.site or "",
+                metro=e.metro,
+            )
+            for e in entries
+            if e.host and e.site and e.tenant
+        ]
+        if not boards:
+            return None
+        return WorkdayDiscoveryProvider(
+            boards=boards,
+            timeout_seconds=timeout,
+            max_jobs_per_board=int(settings.discovery_workday_max_jobs_per_board),
+            max_pages_per_board=int(settings.discovery_workday_max_pages_per_board),
+            fetch_details=bool(settings.discovery_workday_fetch_details),
+        )
+
+    if name == "oracle":
+        if not settings.discovery_oracle_enabled:
+            return None
+        entries = registry.get("oracle") or []
+        boards = [
+            OracleBoard(
+                company=e.company,
+                host=e.host or "",
+                site_number=e.tenant,
+                site_path=e.site or e.tenant,
+                career_base_url=e.career_base_url or "",
+                metro=e.metro,
+                location_facet_ids=e.location_facet_ids,
+            )
+            for e in entries
+            if e.host and e.tenant and e.site and e.career_base_url
+        ]
+        if not boards:
+            return None
+        return OracleRecruitingDiscoveryProvider(
+            boards=boards,
+            timeout_seconds=timeout,
+            max_jobs_per_board=int(settings.discovery_oracle_max_jobs_per_board),
+            max_pages_per_board=int(settings.discovery_oracle_max_pages_per_board),
+            fetch_details=bool(settings.discovery_oracle_fetch_details),
         )
 
     if name == "remotive":

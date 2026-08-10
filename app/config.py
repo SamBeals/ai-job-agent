@@ -67,8 +67,8 @@ class Settings(BaseSettings):
     agent_worker_poll_seconds: float = 2.0
     resume_agent_version: str = "3.0.0"
 
-    # Discovery Agent (Phase 3.2 / 3.3)
-    # auto | fake | greenhouse,lever,ashby,remotive,muse,adzuna
+    # Discovery Agent (Phase 3.2–3.6)
+    # auto | fake | greenhouse,lever,ashby,workday,oracle,remotive,muse,adzuna
     discovery_provider: str = "auto"
     discovery_max_raw_results: int = 100
     discovery_max_surfaced_results: int = 10
@@ -78,12 +78,14 @@ class Settings(BaseSettings):
     discovery_min_surface_score: int = 45
     discovery_result_max_age_days: int = 30
     discovery_http_timeout_seconds: float = 15.0
-    # Employer registry (Greenhouse / Lever / Ashby tenants). Env lists still merge in.
+    # Employer registry (Greenhouse / Lever / Ashby / Workday / Oracle). Env lists still merge in.
     discovery_boards_path: str = "config/discovery_boards.json"
     # Per-provider enable flags
     discovery_greenhouse_enabled: bool = True
     discovery_lever_enabled: bool = True
     discovery_ashby_enabled: bool = True
+    discovery_workday_enabled: bool = True
+    discovery_oracle_enabled: bool = True
     discovery_remotive_enabled: bool = True
     discovery_enable_remotive: bool = True  # legacy alias
     discovery_muse_enabled: bool = True
@@ -100,6 +102,12 @@ class Settings(BaseSettings):
     discovery_lever_company_names: str = ""
     discovery_ashby_boards: str = ""
     discovery_ashby_company_names: str = ""
+    discovery_workday_max_jobs_per_board: int = 40
+    discovery_workday_max_pages_per_board: int = 5
+    discovery_workday_fetch_details: bool = True
+    discovery_oracle_max_jobs_per_board: int = 40
+    discovery_oracle_max_pages_per_board: int = 5
+    discovery_oracle_fetch_details: bool = True
     # Adzuna (optional Type B)
     adzuna_app_id: str = ""
     adzuna_app_key: str = ""

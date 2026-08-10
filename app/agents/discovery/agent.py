@@ -327,7 +327,7 @@ class DiscoveryAgent:
             "LOCAL_ONSITE",
             "ACCEPTABLE_METRO",
         }
-        _REGISTRY_PROVIDERS = {"greenhouse", "lever", "ashby"}
+        _REGISTRY_PROVIDERS = {"greenhouse", "lever", "ashby", "workday", "oracle"}
         for raw in raw_all:
             cand = prefilter_candidate(profile, raw)
             if cand.filtered:

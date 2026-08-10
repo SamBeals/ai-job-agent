@@ -3,7 +3,8 @@
   "notes": [
     "Employer/ATS tenants only — never hardcoded jobs.",
     "metro hints are for coverage planning; Discovery still fetches live openings.",
-    "Phoenix-metro entries verified against public Greenhouse/Lever/Ashby APIs (Phase 3.4)."
+    "Workday entries require host + tenant + site verified against public CXS (Phase 3.5).",
+    "Oracle entries require host + site_number + site_path + career_base_url verified against public CE (Phase 3.6)."
   ],
   "greenhouse": [
     {"company": "Axon", "board": "axon", "metro": "scottsdale", "enabled": true},
@@ -43,5 +44,101 @@
     {"company": "Perplexity", "board": "perplexity", "metro": null, "enabled": true},
     {"company": "Amplitude", "board": "amplitude", "metro": null, "enabled": true},
     {"company": "Benchling", "board": "benchling", "metro": null, "enabled": true}
+  ],
+  "workday": [
+    {
+      "company": "Intel",
+      "host": "intel.wd1.myworkdayjobs.com",
+      "tenant": "intel",
+      "site": "External",
+      "metro": "phoenix",
+      "enabled": true
+    },
+    {
+      "company": "NXP",
+      "host": "nxp.wd3.myworkdayjobs.com",
+      "tenant": "nxp",
+      "site": "careers",
+      "metro": "chandler",
+      "enabled": true
+    },
+    {
+      "company": "Choice Hotels",
+      "host": "choicehotels.wd5.myworkdayjobs.com",
+      "tenant": "choicehotels",
+      "site": "External",
+      "metro": "scottsdale",
+      "enabled": true
+    },
+    {
+      "company": "USAA",
+      "host": "usaa.wd1.myworkdayjobs.com",
+      "tenant": "usaa",
+      "site": "USAAJOBSWD",
+      "metro": "phoenix",
+      "enabled": true
+    },
+    {
+      "company": "PayPal",
+      "host": "paypal.wd1.myworkdayjobs.com",
+      "tenant": "paypal",
+      "site": "jobs",
+      "metro": null,
+      "enabled": true
+    },
+    {
+      "company": "Northrop Grumman",
+      "host": "ngc.wd1.myworkdayjobs.com",
+      "tenant": "ngc",
+      "site": "Northrop_Grumman_External_Site",
+      "metro": null,
+      "enabled": true
+    },
+    {
+      "company": "Boeing",
+      "host": "boeing.wd1.myworkdayjobs.com",
+      "tenant": "boeing",
+      "site": "EXTERNAL_CAREERS",
+      "metro": null,
+      "enabled": true
+    },
+    {
+      "company": "Capital One",
+      "host": "capitalone.wd12.myworkdayjobs.com",
+      "tenant": "capitalone",
+      "site": "Capital_One",
+      "metro": null,
+      "enabled": true
+    },
+    {
+      "company": "Target",
+      "host": "target.wd5.myworkdayjobs.com",
+      "tenant": "target",
+      "site": "targetcareers",
+      "metro": null,
+      "enabled": true
+    }
+  ],
+  "oracle": [
+    {
+      "company": "American Express",
+      "host": "egug.fa.us2.oraclecloud.com",
+      "site_number": "CX_1",
+      "site_path": "CX_1",
+      "career_base_url": "https://careers.americanexpress.com",
+      "metro": "phoenix",
+      "location_facet_ids": ["300000007667464"],
+      "enabled": true
+    },
+    {
+      "company": "Honeywell",
+      "host": "ibqbjb.fa.ocs.oraclecloud.com",
+      "site_number": "CX_1",
+      "site_path": "Honeywell",
+      "career_base_url": "https://careers.honeywell.com",
+      "metro": "phoenix",
+      "location_facet_ids": ["300000007395144"],
+      "enabled": true
+    }
   ]
 }

@@ -85,21 +85,23 @@ flowchart TB
 
 **Discovery finds opportunities. Scout evaluates. Human approves preparation. Resume prepares. Submission stays separately locked.**
 
-### Discovery providers (Phase 3.2–3.4)
+### Discovery providers (Phase 3.2–3.6)
 
 | Provider | Auth | Why selected | Limitations |
 | --- | --- | --- | --- |
 | **Greenhouse Job Board API** | None | Stable public JSON; employer `absolute_url`; optional HTML content | Requires known board tokens (no global search) |
 | **Lever Postings API** | None | Official public JSON; hosted + apply URLs; descriptions | Requires known site slugs |
 | **Ashby Job Postings API** | None | Official public JSON; workplace type; optional compensation | Requires known board names |
+| **Workday CXS** | None | Public career-site JSON (`/wday/cxs/{tenant}/{site}/jobs`); unlocks enterprise Phoenix boards | Undocumented; verified host/tenant/site required; some tenants 422 |
+| **Oracle Recruiting CE** | None | Public CE JSON (`recruitingCEJobRequisitions`); unlocks Amex + Honeywell | Undocumented CE; verified host/site_number required; salary rarely present |
 | **Remotive public API** | None | Real remote software jobs; structured JSON | Remote-only; salary often free-text |
 | **The Muse public Jobs API** | None | Broad category + **local-first** preferred-metro search; US remote secondary | Muse landing URLs; noisy mix — filters required |
 | **Adzuna** (optional) | `app_id` + `app_key` | Strong geo search | Free tier limits + attribution rules; off by default |
 | **Fake** | n/a | Deterministic tests | Not live |
 
-Rejected for this phase: LinkedIn/Indeed HTML scraping, CAPTCHA bypass, brittle page scraping. **Workday** is the recommended *next* ATS (unlocks Intel/NXP/enterprise Phoenix boards) but is not implemented yet. See `docs/discovery-provider-research.md` and `docs/phoenix-employer-coverage.md`.
+Rejected for this phase: LinkedIn/Indeed HTML scraping, CAPTCHA bypass, brittle page scraping, anti-bot evasion. See `docs/oracle-recruiting-research.md`, `docs/workday-research.md`, `docs/discovery-provider-research.md`, and `docs/phoenix-employer-coverage.md`.
 
-Employer tenants live in `config/discovery_boards.json` (merged with env overrides). Jobs are never hardcoded. Phoenix-metro registry entries (Axon, Carvana, GoDaddy, Waymo, GoHighLevel, Virtuous, …) expand local coverage without changing filters.
+Employer tenants live in `config/discovery_boards.json` (merged with env overrides). Jobs are never hardcoded. Phoenix-metro registry includes Greenhouse/Lever/Ashby locals, verified Workday boards (Intel, NXP, Choice Hotels, USAA, …), and Oracle CE boards (American Express, Honeywell).
 
 **Secret-safe logging:** bot/worker call `configure_logging()` — httpx/httpcore are WARNING+, and Discord webhook URLs / API keys are redacted from log records.
 

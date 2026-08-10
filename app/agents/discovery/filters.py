@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from app.agents.discovery.geography import assess_geography, requires_us_employment
+from app.agents.discovery.viability import assess_viability, infer_arrangement
 from app.agents.scout.hard_filters import apply_hard_filters
 from app.schemas.candidate import CandidateProfile
 from app.schemas.discovery import RankedDiscoveryCandidate, RawDiscoveryResult
@@ -123,34 +124,56 @@ def prefilter_candidate(
     profile: CandidateProfile,
     raw: RawDiscoveryResult,
 ) -> RankedDiscoveryCandidate:
-    """Reject obvious mismatches; unknown salary/geography must not reject."""
+    """Reject obvious mismatches; unknown salary must not reject."""
     if raw.salary_period and raw.salary_period.lower() in {"hour", "hourly", "hr"}:
         adjusted = raw.model_copy(update={"salary_min": None, "salary_max": None})
     else:
         adjusted = raw
 
     prefs = profile.preferences
+    location_for_geo = _location_for_geography(adjusted)
+    arrangement = infer_arrangement(location_for_geo, adjusted.work_arrangement)
     geo = assess_geography(
-        adjusted.location_text,
-        work_arrangement=adjusted.work_arrangement,
+        location_for_geo,
+        work_arrangement=arrangement,
+    )
+    viability = assess_viability(
+        prefs,
+        location_text=location_for_geo,
+        work_arrangement=arrangement or adjusted.work_arrangement,
+        geo=geo,
     )
     adjusted = adjusted.model_copy(
         update={
-            "normalized_country": geo.normalized_country,
-            "us_work_eligible": geo.us_work_eligible,
+            "normalized_country": viability.normalized_country,
+            "us_work_eligible": viability.us_work_eligible,
+            "work_arrangement": arrangement or adjusted.work_arrangement,
+            "location_text": adjusted.location_text or location_for_geo,
         }
     )
 
-    info_codes: list[str] = []
+    info_codes: list[str] = list(viability.reason_codes)
 
-    # Explicit foreign hard-reject when US employment is required
-    if requires_us_employment(prefs) and geo.us_work_eligible is False:
+    # Geographic hard rejects (foreign + nonlocal physical when relocation not allowed)
+    if viability.filter_reason:
+        return RankedDiscoveryCandidate(
+            raw=adjusted,
+            filtered=True,
+            filter_reason=viability.filter_reason,
+            us_work_eligible=viability.us_work_eligible,
+            normalized_country=viability.normalized_country,
+            reason_codes=info_codes,
+        )
+
+    # Explicit foreign hard-reject when US employment is required (belt + suspenders)
+    if requires_us_employment(prefs) and viability.us_work_eligible is False:
         return RankedDiscoveryCandidate(
             raw=adjusted,
             filtered=True,
             filter_reason="FOREIGN_LOCATION",
             us_work_eligible=False,
-            normalized_country=geo.normalized_country,
+            normalized_country=viability.normalized_country,
+            reason_codes=info_codes,
         )
 
     title = adjusted.title.lower()
@@ -162,8 +185,8 @@ def prefilter_candidate(
                 raw=adjusted,
                 filtered=True,
                 filter_reason="INTERNSHIP_NOT_TARGETED",
-                us_work_eligible=geo.us_work_eligible,
-                normalized_country=geo.normalized_country,
+                us_work_eligible=viability.us_work_eligible,
+                normalized_country=viability.normalized_country,
             )
 
     for pattern in _NON_SOFTWARE_DEVELOPER_CONTEXT:
@@ -172,8 +195,8 @@ def prefilter_candidate(
                 raw=adjusted,
                 filtered=True,
                 filter_reason="NON_SOFTWARE_DEVELOPER_CONTEXT",
-                us_work_eligible=geo.us_work_eligible,
-                normalized_country=geo.normalized_country,
+                us_work_eligible=viability.us_work_eligible,
+                normalized_country=viability.normalized_country,
                 reason_codes=["NON_SOFTWARE_DEVELOPER_CONTEXT"],
             )
 
@@ -183,8 +206,8 @@ def prefilter_candidate(
                 raw=adjusted,
                 filtered=True,
                 filter_reason="UNRELATED_ROLE",
-                us_work_eligible=geo.us_work_eligible,
-                normalized_country=geo.normalized_country,
+                us_work_eligible=viability.us_work_eligible,
+                normalized_country=viability.normalized_country,
             )
 
     if _is_management_track(title, prefs):
@@ -192,8 +215,8 @@ def prefilter_candidate(
             raw=adjusted,
             filtered=True,
             filter_reason="MANAGEMENT_ROLE",
-            us_work_eligible=geo.us_work_eligible,
-            normalized_country=geo.normalized_country,
+            us_work_eligible=viability.us_work_eligible,
+            normalized_country=viability.normalized_country,
         )
 
     # Mandatory language in title — reject when candidate inventory has no evidence
@@ -205,8 +228,8 @@ def prefilter_candidate(
                 raw=adjusted,
                 filtered=True,
                 filter_reason="MANDATORY_LANGUAGE_UNMET",
-                us_work_eligible=geo.us_work_eligible,
-                normalized_country=geo.normalized_country,
+                us_work_eligible=viability.us_work_eligible,
+                normalized_country=viability.normalized_country,
                 reason_codes=info_codes,
             )
 
@@ -217,8 +240,8 @@ def prefilter_candidate(
                 raw=adjusted,
                 filtered=True,
                 filter_reason="FRONTEND_ONLY",
-                us_work_eligible=geo.us_work_eligible,
-                normalized_country=geo.normalized_country,
+                us_work_eligible=viability.us_work_eligible,
+                normalized_country=viability.normalized_country,
             )
 
     if prefs.prefers_software_development is True and not _looks_like_ic_dev_role(
@@ -228,8 +251,8 @@ def prefilter_candidate(
             raw=adjusted,
             filtered=True,
             filter_reason="NON_TARGET_ROLE_FAMILY",
-            us_work_eligible=geo.us_work_eligible,
-            normalized_country=geo.normalized_country,
+            us_work_eligible=viability.us_work_eligible,
+            normalized_country=viability.normalized_country,
         )
 
     job = raw_to_normalized_job(adjusted)
@@ -240,17 +263,32 @@ def prefilter_candidate(
             raw=adjusted,
             filtered=True,
             filter_reason=code,
-            us_work_eligible=geo.us_work_eligible,
-            normalized_country=geo.normalized_country,
+            us_work_eligible=viability.us_work_eligible,
+            normalized_country=viability.normalized_country,
         )
 
     return RankedDiscoveryCandidate(
         raw=adjusted,
         filtered=False,
-        us_work_eligible=geo.us_work_eligible,
-        normalized_country=geo.normalized_country,
+        us_work_eligible=viability.us_work_eligible,
+        normalized_country=viability.normalized_country,
         reason_codes=info_codes,
     )
+
+
+def _location_for_geography(raw: RawDiscoveryResult) -> str | None:
+    """Prefer location_text; fall back to provider country metadata when needed."""
+    loc = (raw.location_text or "").strip()
+    meta = raw.raw_metadata or {}
+    country = meta.get("country") or meta.get("normalized_country")
+    country_s = str(country).strip() if country else ""
+    if not loc or loc.lower() in {"n/a", "na", "none", "null", "-", "unknown"}:
+        return country_s or loc or None
+    if country_s and country_s.lower() not in loc.lower():
+        # Keep city/region text primary; country alone already covered when loc empty
+        return loc
+    return loc or None
+
 
 
 def _is_management_track(title: str, prefs: JobPreferences) -> bool:

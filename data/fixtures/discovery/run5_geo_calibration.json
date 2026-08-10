@@ -1,0 +1,161 @@
+{
+  "schema_version": "discovery.calibration.run5.1",
+  "description": "Regression set from live Discovery Run #5 — strong retrieval but poor geographic viability ranking.",
+  "jobs": [
+    {
+      "id": "run5-equinix-dallas-remote",
+      "title": "Senior DevSecOps Platform Engineer, AI Automation",
+      "company": "Equinix, Inc",
+      "location_text": "Dallas, TX, Flexible / Remote",
+      "work_arrangement": "remote",
+      "description_snippet": "Platform engineering and automation.",
+      "expect": {
+        "surfaces": true,
+        "reason_codes_any_of": ["US_REMOTE", "US_ELIGIBLE"]
+      }
+    },
+    {
+      "id": "run5-walmart-springdale",
+      "title": "Staff Software Engineer",
+      "company": "Walmart",
+      "location_text": "Springdale, AR",
+      "work_arrangement": null,
+      "description_snippet": "Java backend services.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["NONLOCAL_PHYSICAL_UNKNOWN", "NONLOCAL_ONSITE", "NONLOCAL_HYBRID"]
+      }
+    },
+    {
+      "id": "run5-godaddy-colombia",
+      "title": "Senior Backend Software Engineer",
+      "company": "GoDaddy",
+      "location_text": "Colombia",
+      "work_arrangement": null,
+      "description_snippet": "Backend software engineering.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["FOREIGN_LOCATION"]
+      }
+    },
+    {
+      "id": "run5-koalafi-flexible-remote",
+      "title": "Lead Platform Engineer",
+      "company": "Koalafi",
+      "location_text": "Flexible / Remote",
+      "work_arrangement": "remote",
+      "description_snippet": "Platform engineering.",
+      "expect": {
+        "surfaces": false,
+        "max_score_below_threshold": true,
+        "reason_codes_any_of": ["REMOTE_ELIGIBILITY_UNKNOWN"]
+      }
+    },
+    {
+      "id": "run5-gitlab-flexible-remote",
+      "title": "Intermediate Backend Engineer",
+      "company": "GitLab",
+      "location_text": "Flexible / Remote",
+      "work_arrangement": "remote",
+      "description_snippet": "Backend engineering.",
+      "expect": {
+        "surfaces": false,
+        "max_score_below_threshold": true,
+        "reason_codes_any_of": ["REMOTE_ELIGIBILITY_UNKNOWN"]
+      }
+    },
+    {
+      "id": "run5-palantir-ny-hybrid",
+      "title": "Backend Software Engineer",
+      "company": "Palantir",
+      "location_text": "New York, NY",
+      "work_arrangement": "hybrid",
+      "description_snippet": "Backend software.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["NONLOCAL_HYBRID"]
+      }
+    },
+    {
+      "id": "run5-palantir-dc-onsite",
+      "title": "Backend Software Engineer - Defense",
+      "company": "Palantir",
+      "location_text": "Washington DC",
+      "work_arrangement": "onsite",
+      "description_snippet": "Backend software.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["NONLOCAL_ONSITE"]
+      }
+    },
+    {
+      "id": "run5-palantir-palo-alto-onsite",
+      "title": "Backend Software Engineer - Defense",
+      "company": "Palantir",
+      "location_text": "Palo Alto, CA",
+      "work_arrangement": "onsite",
+      "description_snippet": "Backend software.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["NONLOCAL_ONSITE"]
+      }
+    },
+    {
+      "id": "run5-palantir-ny-onsite",
+      "title": "Backend Software Engineer - Defense",
+      "company": "Palantir",
+      "location_text": "New York, NY",
+      "work_arrangement": "onsite",
+      "description_snippet": "Backend software.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["NONLOCAL_ONSITE"]
+      }
+    },
+    {
+      "id": "control-chandler-hybrid",
+      "title": "Backend Software Engineer",
+      "company": "Desert Systems",
+      "location_text": "Chandler, AZ",
+      "work_arrangement": "hybrid",
+      "salary_min": 130000,
+      "salary_max": 160000,
+      "salary_period": "year",
+      "description_snippet": "Java backend APIs.",
+      "expect": {
+        "surfaces": true,
+        "reason_codes_any_of": ["CHANDLER", "LOCAL_HYBRID", "TARGET_SOFTWARE_ROLE"]
+      }
+    },
+    {
+      "id": "control-phoenix-onsite",
+      "title": "Backend Software Engineer",
+      "company": "Valley Co",
+      "location_text": "Phoenix, AZ",
+      "work_arrangement": "onsite",
+      "salary_min": 125000,
+      "salary_max": 150000,
+      "salary_period": "year",
+      "description_snippet": "Java backend services.",
+      "expect": {
+        "surfaces": true,
+        "reason_codes_any_of": ["PHOENIX_METRO", "LOCAL_ONSITE"]
+      }
+    },
+    {
+      "id": "control-us-remote",
+      "title": "Backend Engineer",
+      "company": "Cloud Harbor",
+      "location_text": "Remote - US",
+      "work_arrangement": "remote",
+      "salary_min": 130000,
+      "salary_max": 160000,
+      "salary_period": "year",
+      "description_snippet": "Java backend.",
+      "expect": {
+        "surfaces": true,
+        "reason_codes_any_of": ["US_REMOTE"]
+      }
+    }
+  ]
+}

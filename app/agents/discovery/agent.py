@@ -309,11 +309,36 @@ class DiscoveryAgent:
             )
 
         kept: list[RankedDiscoveryCandidate] = []
+        geo_diag = {
+            "foreign_rejected": 0,
+            "nonlocal_physical_rejected": 0,
+            "remote_eligible": 0,
+            "remote_unknown": 0,
+            "preferred_metro_candidates": 0,
+        }
         for raw in raw_all:
             cand = prefilter_candidate(profile, raw)
             if cand.filtered:
+                reason = cand.filter_reason or ""
+                if reason == "FOREIGN_LOCATION":
+                    geo_diag["foreign_rejected"] += 1
+                elif reason in {
+                    "NONLOCAL_ONSITE",
+                    "NONLOCAL_HYBRID",
+                    "NONLOCAL_PHYSICAL_UNKNOWN",
+                    "REMOTE_REGION_INCOMPATIBLE",
+                }:
+                    geo_diag["nonlocal_physical_rejected"] += 1
                 continue
-            kept.append(score_candidate(profile, cand))
+            scored = score_candidate(profile, cand)
+            codes = set(scored.reason_codes or [])
+            if "US_REMOTE" in codes:
+                geo_diag["remote_eligible"] += 1
+            if "REMOTE_ELIGIBILITY_UNKNOWN" in codes:
+                geo_diag["remote_unknown"] += 1
+            if codes & {"CHANDLER", "PHOENIX_METRO", "PREFERRED_METRO", "LOCAL_HYBRID", "LOCAL_ONSITE", "ACCEPTABLE_METRO"}:
+                geo_diag["preferred_metro_candidates"] += 1
+            kept.append(scored)
         run.filtered_result_count = len(kept)
 
         # Enrich provider stats with hard-filter survivors (logs / metadata)
@@ -390,6 +415,7 @@ class DiscoveryAgent:
                     "surfaced": run.surfaced_result_count,
                     "providers": provider_names,
                     "provider_stats": provider_stats,
+                    "geo_diagnostics": geo_diag,
                 },
             )
 
@@ -397,7 +423,7 @@ class DiscoveryAgent:
         logger.info(
             "discovery_completed run_id=%s status=%s raw=%s filtered=%s "
             "deduped=%s quality=%s previously_seen=%s surfaced=%s min_score=%s "
-            "provider_stats=%s duration_ms=%s",
+            "provider_stats=%s geo_diagnostics=%s duration_ms=%s",
             run_id,
             run.status,
             run.raw_result_count,
@@ -408,6 +434,7 @@ class DiscoveryAgent:
             run.surfaced_result_count,
             min_score,
             provider_stats,
+            geo_diag,
             duration_ms,
         )
         return DiscoveryExecutionResult(

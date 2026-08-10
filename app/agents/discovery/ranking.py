@@ -1,8 +1,8 @@
 """Deterministic Discovery ranking — explainable reason_codes.
 
-Scoring is calibrated so weak generic signals (bare \"engineer\" + unknown
-location + hybrid) cannot pile up at a shared middling score. Local
-hybrid/onsite bonuses require known compatible geography.
+Geographic viability dominates preference ranking:
+preferred-metro local hybrid/onsite ≫ US remote ≫ remote-unknown.
+Nonlocal physical roles are hard-filtered upstream when relocation is not allowed.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from app.agents.discovery.viability import assess_viability, relocation_explicitly_allowed
 from app.schemas.candidate import CandidateProfile
 from app.schemas.discovery import RankedDiscoveryCandidate
 
@@ -47,7 +48,6 @@ _BACKEND_PHRASES = (
 
 _JAVA_PHRASES = ("java", "spring boot", "springboot", "jvm", "kotlin")
 
-# Engineering but not primary target family for this candidate
 _SPECIALIZED_ENGINEER = re.compile(
     r"\b("
     r"distributed\s+systems\s+engineer|"
@@ -61,25 +61,15 @@ _SPECIALIZED_ENGINEER = re.compile(
     r"ml\s+engineer|"
     r"security\s+engineer|"
     r"infrastructure\s+engineer|"
-    r"network\s+engineer"
+    r"network\s+engineer|"
+    r"devsecops"
     r")\b",
     re.I,
 )
 
-_CHANDLER = ("chandler",)
-_PHOENIX_METRO = (
-    "chandler",
-    "phoenix",
-    "tempe",
-    "mesa",
-    "gilbert",
-    "scottsdale",
-    "glendale",
-    "peoria",
-    "arizona",
-    ", az",
-    " east valley",
-)
+# Without preferred-metro or verified US-remote viability, role signals alone
+# must stay below DISCOVERY_MIN_SURFACE_SCORE (45).
+_MAX_SCORE_WITHOUT_GEO_VIABILITY = 40
 
 
 def score_candidate(
@@ -99,25 +89,27 @@ def score_candidate(
     loc_l = (raw.location_text or "").lower()
     blob = f"{title_l} {(raw.description_snippet or '').lower()}"
 
+    viability = assess_viability(
+        prefs,
+        location_text=raw.location_text,
+        work_arrangement=raw.work_arrangement,
+    )
     us_eligible = (
         candidate.us_work_eligible
         if candidate.us_work_eligible is not None
-        else raw.us_work_eligible
+        else viability.us_work_eligible
     )
-    country = candidate.normalized_country or raw.normalized_country
-    location_known = bool((raw.location_text or "").strip()) and us_eligible is not None
-    # N/A / empty / unresolved → treat as unknown for local bonuses
-    if us_eligible is None:
-        location_known = False
-        reasons.append("LOCATION_UNKNOWN")
-    elif not (raw.location_text or "").strip():
-        location_known = False
-        if "LOCATION_UNKNOWN" not in reasons:
+    country = candidate.normalized_country or viability.normalized_country
+
+    # Carry viability reason codes (deduped later with scoring codes)
+    for code in viability.reason_codes:
+        if code not in reasons:
+            reasons.append(code)
+    if us_eligible is None and "LOCATION_UNKNOWN" not in reasons:
+        if not viability.remote_us_eligible and not viability.in_preferred_metro:
             reasons.append("LOCATION_UNKNOWN")
 
-    local_tier = _local_geo_tier(loc_l)
-
-    # --- Role family (strict phrases; no bare developer/engineer) ---
+    # --- Role family ---
     target_hit = False
     targets = [t.lower() for t in (prefs.target_roles or [])]
     if targets and any(t in title_l for t in targets):
@@ -132,7 +124,6 @@ def score_candidate(
         score += 10
         reasons.append("SPECIALIZED_ROLE")
     elif prefs.prefers_software_development is True and _weak_software_title(title_l):
-        # Very weak leftover signal — intentionally small
         score += 4
         reasons.append("WEAK_SOFTWARE_SIGNAL")
 
@@ -144,56 +135,56 @@ def score_candidate(
         score += 8
         reasons.append("JAVA_SIGNAL")
 
-    # --- Geography eligibility label (ranking only; foreign already filtered) ---
-    if us_eligible is True:
-        reasons.append("US_ELIGIBLE")
-
-    if local_tier == "chandler":
+    # --- Locality / arrangement (no generic Hybrid reward) ---
+    geo_viable = False
+    if viability.metro_tier == "preferred":
         score += 22
-        reasons.append("CHANDLER")
-    elif local_tier == "phoenix":
+        geo_viable = True
+        if "CHANDLER" not in reasons and "chandler" in loc_l:
+            reasons.append("CHANDLER")
+    elif viability.metro_tier == "acceptable":
         score += 14
-        reasons.append("PHOENIX_METRO")
-    elif us_eligible is True and local_tier is None:
-        # Known US but outside preferred metro — small credit only
-        score += 2
+        geo_viable = True
 
-    # --- Work arrangement: hybrid/onsite bonus only with compatible local geo ---
-    arrangement = (raw.work_arrangement or "").lower()
-    if arrangement == "hybrid":
-        if local_tier in {"chandler", "phoenix"}:
-            score += 14
+    if viability.arrangement == "hybrid" and viability.in_preferred_metro:
+        score += 14
+        if "LOCAL_HYBRID" not in reasons:
             reasons.append("LOCAL_HYBRID")
-        elif location_known and us_eligible is True:
-            # US hybrid outside Phoenix is low value unless relocation allowed
-            if prefs.relocation_allowed is True:
-                score += 4
-                reasons.append("HYBRID")
-            else:
-                reasons.append("HYBRID_NONLOCAL")
-        else:
-            # Unknown location + hybrid: record arrangement, no local bonus
-            reasons.append("HYBRID_LOCATION_UNKNOWN")
-    elif arrangement in {"onsite", "on-site", "on site"}:
-        if local_tier in {"chandler", "phoenix"}:
-            score += 12
+        geo_viable = True
+    elif viability.arrangement == "onsite" and viability.in_preferred_metro:
+        score += 12
+        if "LOCAL_ONSITE" not in reasons:
             reasons.append("LOCAL_ONSITE")
-        elif location_known and us_eligible is True and prefs.relocation_allowed is True:
-            score += 3
-            reasons.append("ONSITE")
-        elif not location_known:
-            reasons.append("ONSITE_LOCATION_UNKNOWN")
-        else:
-            reasons.append("ONSITE_NONLOCAL")
-    elif arrangement == "remote" and us_eligible is True:
+        geo_viable = True
+    elif viability.remote_us_eligible:
         score += 6
-        reasons.append("US_REMOTE")
-    elif arrangement == "remote" and us_eligible is None:
-        reasons.append("REMOTE_LOCATION_UNKNOWN")
+        if "US_REMOTE" not in reasons:
+            reasons.append("US_REMOTE")
+        geo_viable = True
+    elif viability.remote_eligibility_unknown:
+        if "REMOTE_ELIGIBILITY_UNKNOWN" not in reasons:
+            reasons.append("REMOTE_ELIGIBILITY_UNKNOWN")
+    elif viability.nonlocal_physical and relocation_explicitly_allowed(prefs):
+        # Relocation explicitly permitted — eligible but not preferred
+        score += 4
+        if viability.arrangement == "hybrid":
+            reasons.append("HYBRID")
+        elif viability.arrangement == "onsite":
+            reasons.append("ONSITE")
+        else:
+            reasons.append("RELOCATION_ELIGIBLE_NONLOCAL")
+        geo_viable = True
+    elif viability.arrangement == "hybrid" and not viability.in_preferred_metro:
+        if "NONLOCAL_HYBRID" not in reasons:
+            reasons.append("NONLOCAL_HYBRID")
+    elif viability.arrangement == "onsite" and not viability.in_preferred_metro:
+        if "NONLOCAL_ONSITE" not in reasons:
+            reasons.append("NONLOCAL_ONSITE")
 
-    # Language constraint already hard-filtered when unmet; note if present but ok
+    # Language constraint already hard-filtered when unmet
     if candidate.reason_codes and "MANDATORY_LANGUAGE_SIGNAL" in candidate.reason_codes:
-        reasons.append("MANDATORY_LANGUAGE_SIGNAL")
+        if "MANDATORY_LANGUAGE_SIGNAL" not in reasons:
+            reasons.append("MANDATORY_LANGUAGE_SIGNAL")
 
     # Salary
     minimum = prefs.minimum_base_salary
@@ -205,7 +196,7 @@ def score_candidate(
             score += 8
             reasons.append("SALARY_ABOVE_MINIMUM")
 
-    # Freshness — minor only (must not create a shared floor with hybrid)
+    # Freshness — minor only
     if raw.published_at is not None:
         published = raw.published_at
         if published.tzinfo is None:
@@ -215,34 +206,32 @@ def score_candidate(
             score += 3
             reasons.append("FRESH_POSTING")
 
+    if not geo_viable:
+        score = min(score, _MAX_SCORE_WITHOUT_GEO_VIABILITY)
+
     score = max(0, min(100, score))
-    # Merge any prefilter informational codes
+
     for code in candidate.reason_codes or []:
         if code not in reasons:
             reasons.append(code)
 
+    # Deduplicate while preserving order
+    deduped_reasons: list[str] = []
+    for code in reasons:
+        if code not in deduped_reasons:
+            deduped_reasons.append(code)
+
     return RankedDiscoveryCandidate(
         raw=raw,
         discovery_score=score,
-        reason_codes=reasons,
+        reason_codes=deduped_reasons,
         filtered=False,
         us_work_eligible=us_eligible,
         normalized_country=country,
     )
 
 
-def _local_geo_tier(loc_l: str) -> str | None:
-    if not loc_l:
-        return None
-    if any(c in loc_l for c in _CHANDLER):
-        return "chandler"
-    if any(p in loc_l for p in _PHOENIX_METRO):
-        return "phoenix"
-    return None
-
-
 def _weak_software_title(title_l: str) -> bool:
-    """True for leftover engineering-ish titles without target phrases."""
     if "engineer" in title_l or "developer" in title_l:
         return True
     return False

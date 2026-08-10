@@ -60,6 +60,14 @@ _US_STATES = (
     r"\bvirginia\b",
     r"\bminnesota\b",
     r"\bmichigan\b",
+    r"\barkansas\b",
+    r"\balabama\b",
+    r"\btennessee\b",
+    r"\bmissouri\b",
+    r"\bwisconsin\b",
+    r"\bindiana\b",
+    r"\bmaryland\b",
+    r"\bnew\s+jersey\b",
     r"\b,\s*az\b",
     r"\b,\s*ca\b",
     r"\b,\s*wa\b",
@@ -73,6 +81,8 @@ _US_STATES = (
     r"\b,\s*or\b",
     r"\b,\s*nv\b",
     r"\b,\s*ut\b",
+    r"\b,\s*ar\b",
+    r"\b,\s*dc\b",
 )
 
 _US_CITIES = (
@@ -91,10 +101,13 @@ _US_CITIES = (
     r"\bdenver\b",
     r"\bboston\b",
     r"\batlanta\b",
-    r"\bseattle\b",
     r"\blos\s+angeles\b",
     r"\bsan\s+diego\b",
     r"\bsan\s+jose\b",
+    r"\bdallas\b",
+    r"\bpalo\s+alto\b",
+    r"\bspringdale\b",
+    r"\bwashington\s*,?\s*d\.?c\.?\b",
 )
 
 _FOREIGN_COUNTRY = (
@@ -118,8 +131,15 @@ _FOREIGN_COUNTRY = (
     (r"\blatam\b", "LATAM"),
     (r"\bmexico\b", "MX"),
     (r"\bbrazil\b", "BR"),
+    (r"\bcolombia\b", "CO"),
+    (r"\bargentina\b", "AR"),
+    (r"\bchile\b", "CL"),
+    (r"\bperu\b", "PE"),
+    (r"\bcosta\s+rica\b", "CR"),
     (r"\bsingapore\b", "SG"),
     (r"\bjapan\b", "JP"),
+    (r"\bphilippines\b", "PH"),
+    (r"\bisrael\b", "IL"),
 )
 
 # Cities that are overwhelmingly non-US in job-board location strings
@@ -144,6 +164,10 @@ _FOREIGN_CITIES = (
     (r"\bamsterdam\b", "EU"),
     (r"\bparis\b", "EU"),
     (r"\bdublin\b", "IE"),  # Dublin CA is rare on ATS boards; Dublin, Ireland is common
+    (r"\bbogot[aá]\b", "CO"),
+    (r"\bmedell[ií]n\b", "CO"),
+    (r"\bbarranquilla\b", "CO"),
+    (r"\bcali\b", "CO"),
 )
 
 _AMBIGUOUS_REMOTE = re.compile(

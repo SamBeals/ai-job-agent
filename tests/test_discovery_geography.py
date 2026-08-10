@@ -226,7 +226,12 @@ def test_live_surfaced_replay_filter_counts(profile):
     assert len(filtered) >= 9
     reasons = {r for _t, _l, r in filtered}
     assert "FOREIGN_LOCATION" in reasons
-    # Exact expected count for the Phase 3.2 live surfaced set (20 rows)
-    assert len(filtered) == 9
-    assert len(kept) == 11
+    # Geo viability pass also rejects nonlocal physical unknown/onsite/hybrid
+    assert "NONLOCAL_PHYSICAL_UNKNOWN" in reasons or "NONLOCAL_ONSITE" in reasons or "NONLOCAL_HYBRID" in reasons
+    # Foreign still present; remaining kept rows are US-remote or ambiguous N/A remote-capable
+    assert len(kept) >= 4
+    assert all(
+        row[2] is True or row[2] is None
+        for row in kept
+    )
     # Management-with-US is covered separately; live Manager row was India → FOREIGN

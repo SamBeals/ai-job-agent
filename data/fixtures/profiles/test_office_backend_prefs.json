@@ -83,7 +83,7 @@
       "Phoenix, Arizona",
       "East Valley, Arizona"
     ],
-    "relocation_allowed": null,
+    "relocation_allowed": false,
     "us_employment_required": true,
     "prefers_software_development": true,
     "prefers_backend": true,

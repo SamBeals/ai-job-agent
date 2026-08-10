@@ -41,7 +41,13 @@ class DiscoveryRun(Base):
     raw_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     filtered_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     deduplicated_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    quality_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    previously_seen_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     surfaced_result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    provider_stats: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(SQLiteJSON(), "sqlite"),
+        nullable=True,
+    )
     error_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     work_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     started_at: Mapped[datetime] = mapped_column(

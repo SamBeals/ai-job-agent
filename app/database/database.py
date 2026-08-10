@@ -89,6 +89,20 @@ def _migrate_sqlite_discovery_results(target: Engine) -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE discovery_results ADD COLUMN us_work_eligible BOOLEAN"
             )
+        run_rows = conn.exec_driver_sql("PRAGMA table_info(discovery_runs)").fetchall()
+        run_cols = {r[1] for r in run_rows} if run_rows else set()
+        if run_cols and "quality_result_count" not in run_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE discovery_runs ADD COLUMN quality_result_count INTEGER DEFAULT 0"
+            )
+        if run_cols and "previously_seen_count" not in run_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE discovery_runs ADD COLUMN previously_seen_count INTEGER DEFAULT 0"
+            )
+        if run_cols and "provider_stats" not in run_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE discovery_runs ADD COLUMN provider_stats JSON"
+            )
 
 
 def _migrate_sqlite_agent_work_items(target: Engine) -> None:

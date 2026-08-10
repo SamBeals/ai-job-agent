@@ -199,6 +199,8 @@ class PipelineOrchestrator:
         sources = len(run.providers_used or [])
         raw_count = int(run.raw_result_count)
         filtered_count = int(run.filtered_result_count)
+        quality_count = int(getattr(run, "quality_result_count", 0) or 0)
+        previously_seen = int(getattr(run, "previously_seen_count", 0) or 0)
         surfaced_count = int(run.surfaced_result_count)
         rid = int(run.id)
         wid = int(item.id)
@@ -212,6 +214,8 @@ class PipelineOrchestrator:
                 run_id=rid,
                 work_item_id=wid,
                 surfaced_result_count=surfaced_count,
+                quality_result_count=quality_count,
+                previously_seen_count=previously_seen,
             )
             kind = "work_item_completed"
             title = "DISCOVERY — PARTIAL"
@@ -223,6 +227,8 @@ class PipelineOrchestrator:
                 raw_result_count=raw_count,
                 filtered_result_count=filtered_count,
                 surfaced_result_count=surfaced_count,
+                quality_result_count=quality_count,
+                previously_seen_count=previously_seen,
             )
             kind = "work_item_completed"
             title = "DISCOVERY — COMPLETE"

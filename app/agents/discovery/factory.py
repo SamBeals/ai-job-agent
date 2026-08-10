@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from app.agents.discovery.boards import (
+    company_map,
+    load_discovery_boards,
+    merge_tenants,
+    tenant_list,
+)
+from app.agents.discovery.providers.adzuna import AdzunaDiscoveryProvider
+from app.agents.discovery.providers.ashby import AshbyDiscoveryProvider
 from app.agents.discovery.providers.base import DiscoveryProvider
 from app.agents.discovery.providers.fake import FakeDiscoveryProvider
 from app.agents.discovery.providers.greenhouse import GreenhouseDiscoveryProvider
+from app.agents.discovery.providers.lever import LeverDiscoveryProvider
+from app.agents.discovery.providers.muse import MuseDiscoveryProvider
 from app.agents.discovery.providers.remotive import RemotiveDiscoveryProvider
 from app.config import Settings, get_settings
 
@@ -17,11 +29,9 @@ def build_discovery_providers(
     """Return live providers for production, or Fake when configured/forced.
 
     DISCOVERY_PROVIDER:
-      - auto (default): greenhouse boards (if configured) + remotive
+      - auto (default): all enabled providers with valid config
       - fake: deterministic test provider only
-      - greenhouse: greenhouse only
-      - remotive: remotive only
-      - greenhouse,remotive: both
+      - comma-separated names: greenhouse,remotive,lever,ashby,muse,adzuna
     """
     settings = settings or get_settings()
     if force_fake or (settings.discovery_provider or "").strip().lower() == "fake":
@@ -32,55 +42,137 @@ def build_discovery_providers(
         for p in (settings.discovery_provider or "auto").split(",")
         if p.strip()
     ]
-    if names == ["auto"]:
-        providers: list[DiscoveryProvider] = []
-        boards = _parse_boards(settings.discovery_greenhouse_boards)
-        if boards:
-            providers.append(
-                GreenhouseDiscoveryProvider(
-                    board_tokens=boards,
-                    timeout_seconds=settings.discovery_http_timeout_seconds,
-                    company_names=_parse_company_map(settings.discovery_greenhouse_company_names),
-                )
-            )
-        if settings.discovery_enable_remotive:
-            providers.append(
-                RemotiveDiscoveryProvider(
-                    timeout_seconds=settings.discovery_http_timeout_seconds,
-                )
-            )
-        if not providers:
-            # No boards configured — Remotive alone still finds real remote jobs
-            providers.append(
-                RemotiveDiscoveryProvider(
-                    timeout_seconds=settings.discovery_http_timeout_seconds,
-                )
-            )
-        return providers
+    registry = load_discovery_boards(_boards_path(settings))
 
-    providers = []
-    for name in names:
-        if name == "fake":
-            providers.append(FakeDiscoveryProvider())
-        elif name == "greenhouse":
-            boards = _parse_boards(settings.discovery_greenhouse_boards)
-            if boards:
-                providers.append(
-                    GreenhouseDiscoveryProvider(
-                        board_tokens=boards,
-                        timeout_seconds=settings.discovery_http_timeout_seconds,
-                        company_names=_parse_company_map(
-                            settings.discovery_greenhouse_company_names
-                        ),
-                    )
-                )
-        elif name == "remotive":
-            providers.append(
-                RemotiveDiscoveryProvider(
-                    timeout_seconds=settings.discovery_http_timeout_seconds,
-                )
-            )
+    if names == ["auto"]:
+        wanted = [
+            "greenhouse",
+            "lever",
+            "ashby",
+            "remotive",
+            "muse",
+            "adzuna",
+        ]
+    else:
+        wanted = names
+
+    providers: list[DiscoveryProvider] = []
+    for name in wanted:
+        provider = _build_named(name, settings, registry)
+        if provider is not None:
+            providers.append(provider)
+
     return providers or [FakeDiscoveryProvider()]
+
+
+def _boards_path(settings: Settings) -> Path | None:
+    raw = (settings.discovery_boards_path or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        # Resolve relative to repo cwd
+        path = Path.cwd() / path
+    return path
+
+
+def _build_named(
+    name: str,
+    settings: Settings,
+    registry: dict,
+) -> DiscoveryProvider | None:
+    timeout = settings.discovery_http_timeout_seconds
+
+    if name == "fake":
+        return FakeDiscoveryProvider()
+
+    if name == "greenhouse":
+        if not settings.discovery_greenhouse_enabled:
+            return None
+        entries = merge_tenants(
+            registry.get("greenhouse") or [],
+            _parse_boards(settings.discovery_greenhouse_boards),
+            _parse_company_map(settings.discovery_greenhouse_company_names),
+        )
+        # Fix ats label for env-only merges
+        tokens = tenant_list(entries)
+        if not tokens:
+            return None
+        return GreenhouseDiscoveryProvider(
+            board_tokens=tokens,
+            timeout_seconds=timeout,
+            company_names={
+                **_parse_company_map(settings.discovery_greenhouse_company_names),
+                **company_map(entries),
+            },
+        )
+
+    if name == "lever":
+        if not settings.discovery_lever_enabled:
+            return None
+        entries = merge_tenants(
+            registry.get("lever") or [],
+            _parse_boards(settings.discovery_lever_sites),
+            _parse_company_map(settings.discovery_lever_company_names),
+        )
+        tokens = tenant_list(entries)
+        if not tokens:
+            return None
+        return LeverDiscoveryProvider(
+            site_tokens=tokens,
+            timeout_seconds=timeout,
+            company_names={
+                **_parse_company_map(settings.discovery_lever_company_names),
+                **company_map(entries),
+            },
+        )
+
+    if name == "ashby":
+        if not settings.discovery_ashby_enabled:
+            return None
+        entries = merge_tenants(
+            registry.get("ashby") or [],
+            _parse_boards(settings.discovery_ashby_boards),
+            _parse_company_map(settings.discovery_ashby_company_names),
+        )
+        tokens = tenant_list(entries)
+        if not tokens:
+            return None
+        return AshbyDiscoveryProvider(
+            board_tokens=tokens,
+            timeout_seconds=timeout,
+            company_names={
+                **_parse_company_map(settings.discovery_ashby_company_names),
+                **company_map(entries),
+            },
+        )
+
+    if name == "remotive":
+        if not (
+            settings.discovery_remotive_enabled or settings.discovery_enable_remotive
+        ):
+            return None
+        return RemotiveDiscoveryProvider(timeout_seconds=timeout)
+
+    if name == "muse":
+        if not settings.discovery_muse_enabled:
+            return None
+        return MuseDiscoveryProvider(timeout_seconds=timeout)
+
+    if name == "adzuna":
+        if not settings.discovery_adzuna_enabled:
+            return None
+        app_id = settings.adzuna_app_id or settings.discovery_adzuna_app_id
+        app_key = settings.adzuna_app_key or settings.discovery_adzuna_app_key
+        if not app_id or not app_key:
+            return None
+        return AdzunaDiscoveryProvider(
+            app_id=app_id,
+            app_key=app_key,
+            timeout_seconds=timeout,
+        )
+
+    return None
 
 
 def _parse_boards(raw: str) -> list[str]:

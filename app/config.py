@@ -67,24 +67,45 @@ class Settings(BaseSettings):
     agent_worker_poll_seconds: float = 2.0
     resume_agent_version: str = "3.0.0"
 
-    # Discovery Agent (Phase 3.2)
-    # auto | fake | greenhouse | remotive | comma-separated
+    # Discovery Agent (Phase 3.2 / 3.3)
+    # auto | fake | greenhouse,lever,ashby,remotive,muse,adzuna
     discovery_provider: str = "auto"
     discovery_max_raw_results: int = 100
     discovery_max_surfaced_results: int = 10
+    # Ceiling companion: only surface results at/above this score (max is a ceiling).
+    # Rationale: Chandler/Phoenix backend/hybrid ~70–95, US-remote backend ~55–70,
+    # specialized/unknown-location roles typically ≤25. 45 blocks weak padding.
+    discovery_min_surface_score: int = 45
     discovery_result_max_age_days: int = 30
     discovery_http_timeout_seconds: float = 15.0
-    discovery_enable_remotive: bool = True
-    # Comma-separated Greenhouse board tokens (public Job Board API, no key)
+    # Employer registry (Greenhouse / Lever / Ashby tenants). Env lists still merge in.
+    discovery_boards_path: str = "config/discovery_boards.json"
+    # Per-provider enable flags
+    discovery_greenhouse_enabled: bool = True
+    discovery_lever_enabled: bool = True
+    discovery_ashby_enabled: bool = True
+    discovery_remotive_enabled: bool = True
+    discovery_enable_remotive: bool = True  # legacy alias
+    discovery_muse_enabled: bool = True
+    discovery_adzuna_enabled: bool = False  # requires keys + attribution readiness
+    # Comma-separated ATS tenants (merged with discovery_boards.json)
     discovery_greenhouse_boards: str = (
-        "stripe,datadog,cloudflare,gitlab,hashicorp,twilio,notion,airbnb,discord"
+        "stripe,datadog,cloudflare,gitlab,hashicorp,twilio,airbnb,discord"
     )
-    # Optional token:Company Name;token2:Other
     discovery_greenhouse_company_names: str = (
         "stripe:Stripe;datadog:Datadog;cloudflare:Cloudflare;gitlab:GitLab;"
-        "hashicorp:HashiCorp;twilio:Twilio;notion:Notion;airbnb:Airbnb;discord:Discord"
+        "hashicorp:HashiCorp;twilio:Twilio;airbnb:Airbnb;discord:Discord"
     )
-    discovery_api_key: str = ""  # reserved for future paid APIs; unused by MVP providers
+    discovery_lever_sites: str = ""
+    discovery_lever_company_names: str = ""
+    discovery_ashby_boards: str = ""
+    discovery_ashby_company_names: str = ""
+    # Adzuna (optional Type B)
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
+    discovery_adzuna_app_id: str = ""
+    discovery_adzuna_app_key: str = ""
+    discovery_api_key: str = ""  # reserved
 
     @property
     def is_development(self) -> bool:

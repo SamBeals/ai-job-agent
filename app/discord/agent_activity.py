@@ -181,18 +181,46 @@ def discovery_completed_embeds(
     raw_result_count: int,
     filtered_result_count: int,
     surfaced_result_count: int,
+    quality_result_count: int | None = None,
+    previously_seen_count: int | None = None,
 ) -> list[dict[str, Any]]:
     identity = get_agent_identity(AgentType.DISCOVERY)
+    quality = (
+        quality_result_count
+        if quality_result_count is not None
+        else surfaced_result_count
+    )
+    seen = int(previously_seen_count or 0)
+
+    if surfaced_result_count > 0:
+        noun = "opportunity" if surfaced_result_count == 1 else "opportunities"
+        headline = f"**{surfaced_result_count}** strong new {noun} found."
+        closer = "I've posted them below for review."
+    elif quality <= 0:
+        headline = "Search complete.\nNo opportunities met the quality threshold this time."
+        closer = "That is a successful Discovery run."
+    else:
+        # Quality matches existed but all were previously seen / blocked from resurfacing
+        noun = "match" if quality == 1 else "matches"
+        headline = (
+            f"**{quality}** strong {noun} found, but you've already seen "
+            f"{'it' if quality == 1 else f'all {quality}'}."
+            "\nNo new opportunities this run."
+        )
+        closer = "Previously surfaced, scouted, or dismissed jobs stay suppressed."
+
     return [
         {
             "title": f"{identity.emoji} {identity.display_name.upper()} — COMPLETE",
             "description": (
-                "Search complete.\n\n"
+                f"{headline}\n\n"
                 f"**Sources searched:** {sources_searched}\n"
                 f"**Potential jobs found:** {raw_result_count}\n"
-                f"**Passed initial screening:** {filtered_result_count}\n"
-                f"**New opportunities:** {surfaced_result_count}\n\n"
-                "I've posted the strongest matches below."
+                f"**Passed hard filters:** {filtered_result_count}\n"
+                f"**Passed quality threshold:** {quality}\n"
+                f"**Previously seen:** {seen}\n"
+                f"**Surfaced:** {surfaced_result_count}\n\n"
+                f"{closer}"
             ),
             "color": 0x57F287,
             "fields": [
@@ -212,15 +240,39 @@ def discovery_partial_embeds(
     run_id: int,
     work_item_id: int,
     surfaced_result_count: int,
+    quality_result_count: int | None = None,
+    previously_seen_count: int | None = None,
 ) -> list[dict[str, Any]]:
     identity = get_agent_identity(AgentType.DISCOVERY)
+    quality = (
+        quality_result_count
+        if quality_result_count is not None
+        else surfaced_result_count
+    )
+    seen = int(previously_seen_count or 0)
+    if surfaced_result_count > 0:
+        noun = "opportunity" if surfaced_result_count == 1 else "opportunities"
+        body = (
+            "Search completed with one source unavailable.\n\n"
+            f"**{surfaced_result_count}** strong new {noun} found "
+            f"from remaining sources.\n"
+            f"(Quality: {quality} · previously seen: {seen})"
+        )
+    elif quality <= 0:
+        body = (
+            "Search completed with one source unavailable.\n\n"
+            "No opportunities met the quality threshold this time."
+        )
+    else:
+        body = (
+            "Search completed with one source unavailable.\n\n"
+            f"**{quality}** strong matches found, but you've already seen them.\n"
+            "No new opportunities this run."
+        )
     return [
         {
             "title": f"{identity.emoji} {identity.display_name.upper()} — PARTIAL",
-            "description": (
-                "Search completed with one source unavailable.\n\n"
-                f"**{surfaced_result_count}** new opportunities found from remaining sources."
-            ),
+            "description": body,
             "color": 0xFEE75C,
             "fields": [
                 {"name": "Status", "value": "PARTIAL", "inline": True},

@@ -54,6 +54,7 @@ class ProviderSearchOutcome:
     providers_ok: int = 0
     providers_failed: int = 0
     errors: list[str] = field(default_factory=list)
+    provider_stats: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -65,8 +66,11 @@ class DiscoveryExecutionResult:
     raw_result_count: int = 0
     filtered_result_count: int = 0
     deduplicated_result_count: int = 0
+    quality_result_count: int = 0
+    previously_seen_count: int = 0
     surfaced_result_count: int = 0
     providers_used: list[str] = field(default_factory=list)
+    provider_stats: dict[str, dict[str, int]] = field(default_factory=dict)
     surfaced_ids: list[int] = field(default_factory=list)
     success: bool = True
     message: str = ""
@@ -83,6 +87,7 @@ def search_providers(
     for provider in providers:
         name = getattr(provider, "name", type(provider).__name__)
         outcome.providers_used.append(name)
+        started = time.monotonic()
         try:
             logger.info(
                 "discovery_provider_started run_id=%s provider=%s",
@@ -92,15 +97,29 @@ def search_providers(
             batch = provider.search(query)
             outcome.raw_results.extend(batch)
             outcome.providers_ok += 1
+            outcome.provider_stats[name] = {
+                "raw": len(batch),
+                "ok": 1,
+                "failed": 0,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            }
             logger.info(
-                "discovery_provider_completed run_id=%s provider=%s count=%s",
+                "discovery_provider_completed run_id=%s provider=%s raw_result_count=%s "
+                "duration_ms=%s",
                 run_id,
                 name,
                 len(batch),
+                outcome.provider_stats[name]["duration_ms"],
             )
         except Exception as exc:  # noqa: BLE001
             outcome.providers_failed += 1
             outcome.errors.append(f"{name}: {type(exc).__name__}")
+            outcome.provider_stats[name] = {
+                "raw": 0,
+                "ok": 0,
+                "failed": 1,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            }
             logger.warning(
                 "discovery_provider_failed run_id=%s provider=%s error=%s",
                 run_id,
@@ -297,18 +316,37 @@ class DiscoveryAgent:
             kept.append(score_candidate(profile, cand))
         run.filtered_result_count = len(kept)
 
+        # Enrich provider stats with hard-filter survivors (logs / metadata)
+        provider_stats = dict(provider_outcome.provider_stats or {})
+        for cand in kept:
+            pname = cand.raw.provider
+            bucket = provider_stats.setdefault(pname, {"raw": 0, "ok": 1, "failed": 0})
+            bucket["normalized"] = int(bucket.get("normalized", 0)) + 1
+
         deduped = dedupe_within_run(kept)
         run.deduplicated_result_count = len(deduped)
 
+        min_score = int(self.settings.discovery_min_surface_score)
         max_surfaced = self.settings.discovery_max_surfaced_results
+        quality = [c for c in deduped if c.discovery_score >= min_score]
+        run.quality_result_count = len(quality)
+        for cand in quality:
+            pname = cand.raw.provider
+            bucket = provider_stats.setdefault(pname, {"raw": 0, "ok": 1, "failed": 0})
+            bucket["quality"] = int(bucket.get("quality", 0)) + 1
+
+        previously_seen = 0
+        missing_url = 0
         surfaced_ids: list[int] = []
-        for cand in sorted(deduped, key=lambda c: c.discovery_score, reverse=True):
+        for cand in sorted(quality, key=lambda c: c.discovery_score, reverse=True):
             raw = cand.raw
             url = raw.canonical_url or raw.job_url
             if not url:
+                missing_url += 1
                 continue
             prior = find_prior_identity(self.session, raw)
             if should_block_resurface(prior):
+                previously_seen += 1
                 continue
             if prior is not None and prior.discovery_run_id == run_id:
                 continue
@@ -324,7 +362,9 @@ class DiscoveryAgent:
             if len(surfaced_ids) >= max_surfaced:
                 break
 
+        run.previously_seen_count = previously_seen
         run.surfaced_result_count = len(surfaced_ids)
+        run.provider_stats = provider_stats
         if providers_failed > 0:
             run.status = DiscoveryRunStatus.PARTIAL.value
             run.error_summary = "; ".join(errors)[:500]
@@ -343,21 +383,31 @@ class DiscoveryAgent:
                     "raw": run.raw_result_count,
                     "filtered": run.filtered_result_count,
                     "deduped": run.deduplicated_result_count,
+                    "quality": run.quality_result_count,
+                    "previously_seen": previously_seen,
+                    "missing_url": missing_url,
+                    "min_surface_score": min_score,
                     "surfaced": run.surfaced_result_count,
                     "providers": provider_names,
+                    "provider_stats": provider_stats,
                 },
             )
 
         duration_ms = int((time.monotonic() - started) * 1000)
         logger.info(
             "discovery_completed run_id=%s status=%s raw=%s filtered=%s "
-            "deduped=%s surfaced=%s duration_ms=%s",
+            "deduped=%s quality=%s previously_seen=%s surfaced=%s min_score=%s "
+            "provider_stats=%s duration_ms=%s",
             run_id,
             run.status,
             run.raw_result_count,
             run.filtered_result_count,
             run.deduplicated_result_count,
+            run.quality_result_count,
+            previously_seen,
             run.surfaced_result_count,
+            min_score,
+            provider_stats,
             duration_ms,
         )
         return DiscoveryExecutionResult(
@@ -366,8 +416,11 @@ class DiscoveryAgent:
             raw_result_count=run.raw_result_count,
             filtered_result_count=run.filtered_result_count,
             deduplicated_result_count=run.deduplicated_result_count,
+            quality_result_count=run.quality_result_count,
+            previously_seen_count=previously_seen,
             surfaced_result_count=run.surfaced_result_count,
             providers_used=provider_names,
+            provider_stats=provider_stats,
             surfaced_ids=surfaced_ids,
             success=True,
             message=run.status,

@@ -50,9 +50,13 @@ class GreenhouseDiscoveryProvider:
     def search(self, query: DiscoveryQuery) -> list[RawDiscoveryResult]:
         results: list[RawDiscoveryResult] = []
         last_error: Exception | None = None
+        n = max(1, len(self.board_tokens))
+        # Sample across boards so early large boards cannot starve later tenants.
+        per_board = max(8, min(self.max_jobs_per_board, max(1, query.max_raw_results // n + 4)))
         for token in self.board_tokens:
             try:
-                results.extend(self._search_board(token, query))
+                batch = self._search_board(token, query, limit=per_board)
+                results.extend(batch)
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 logger.warning(
@@ -60,16 +64,14 @@ class GreenhouseDiscoveryProvider:
                     token,
                     type(exc).__name__,
                 )
-            if len(results) >= query.max_raw_results:
-                break
-        if not results and last_error is not None and not self.board_tokens:
-            raise last_error
         if not results and last_error is not None and len(self.board_tokens) > 0:
             # All boards failed — surface as provider failure
             raise last_error
         return results[: query.max_raw_results]
 
-    def _search_board(self, token: str, query: DiscoveryQuery) -> list[RawDiscoveryResult]:
+    def _search_board(
+        self, token: str, query: DiscoveryQuery, *, limit: int | None = None
+    ) -> list[RawDiscoveryResult]:
         url = f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
         logger.info("discovery_provider_started provider=greenhouse board=%s", token)
         with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True) as client:
@@ -79,7 +81,10 @@ class GreenhouseDiscoveryProvider:
         jobs = payload.get("jobs") or []
         company = self.company_names.get(token) or token.replace("-", " ").title()
         out: list[RawDiscoveryResult] = []
-        for job in jobs[: self.max_jobs_per_board]:
+        cap = limit if limit is not None else self.max_jobs_per_board
+        for job in jobs:
+            if len(out) >= cap:
+                break
             mapped = self._map_job(job, token=token, company=company)
             if mapped is None:
                 continue

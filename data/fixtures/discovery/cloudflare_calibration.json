@@ -1,0 +1,197 @@
+{
+  "schema_version": "discovery.calibration.1",
+  "description": "Regression set from a live Cloudflare Greenhouse Discovery run that previously scored many unrelated titles at ~32/100 (bare engineer/developer + unknown location Hybrid + freshness).",
+  "notes": [
+    "Locations mirror live cards that showed Location unknown + Hybrid.",
+    "Discovery must not pad DISCOVERY_MAX_SURFACED_RESULTS with weak results.",
+    "Director/Developer GTM is non-software context; FDE Hebrew carries a language constraint."
+  ],
+  "jobs": [
+    {
+      "id": "cf-director-gtm-finance",
+      "title": "Director, Developer GTM Finance",
+      "company": "Cloudflare",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "Lead Developer GTM Finance strategy and partnerships.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": [
+          "NON_SOFTWARE_DEVELOPER_CONTEXT",
+          "MANAGEMENT_ROLE",
+          "NON_TARGET_ROLE_FAMILY"
+        ],
+        "not_target_software_role": true
+      }
+    },
+    {
+      "id": "cf-dse-analytical-db",
+      "title": "Distributed Systems Engineer, Analytical Database Platform",
+      "company": "Cloudflare",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "Build analytical database platform components.",
+      "expect": {
+        "surfaces": false,
+        "max_score_below_threshold": true,
+        "no_local_hybrid_bonus": true,
+        "reason_codes_any_of": ["SPECIALIZED_ROLE", "LOCATION_UNKNOWN", "HYBRID_LOCATION_UNKNOWN"]
+      }
+    },
+    {
+      "id": "cf-dse-analytics-alerts",
+      "title": "Distributed Systems Engineer - Data Platform - Analytics and Alerts",
+      "company": "Cloudflare",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "Data platform analytics and alerting systems.",
+      "expect": {
+        "surfaces": false,
+        "max_score_below_threshold": true,
+        "no_local_hybrid_bonus": true
+      }
+    },
+    {
+      "id": "cf-dse-delivery-db",
+      "title": "Distributed Systems Engineer - Data Platform (Delivery, Database, Retrieval)",
+      "company": "Cloudflare",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "Delivery, database, and retrieval for data platform.",
+      "expect": {
+        "surfaces": false,
+        "max_score_below_threshold": true,
+        "no_local_hybrid_bonus": true
+      }
+    },
+    {
+      "id": "cf-dse-logs-audit",
+      "title": "Distributed Systems Engineer - Data Platform - Logs and Audit Logs",
+      "company": "Cloudflare",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "Logs and audit logs for data platform.",
+      "expect": {
+        "surfaces": false,
+        "max_score_below_threshold": true,
+        "no_local_hybrid_bonus": true
+      }
+    },
+    {
+      "id": "cf-fde-generic",
+      "title": "Forward Deployed Engineer (FDE)",
+      "company": "Cloudflare",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "Customer-facing engineering deployments.",
+      "expect": {
+        "surfaces": false,
+        "max_score_below_threshold": true,
+        "allowed_not_hard_rejected_for_title_family": true,
+        "reason_codes_any_of": ["SPECIALIZED_ROLE"]
+      }
+    },
+    {
+      "id": "cf-fde-hebrew",
+      "title": "Forward Deployed Engineer, Hebrew speaker",
+      "company": "Cloudflare",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "FDE role requiring Hebrew.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["MANDATORY_LANGUAGE_UNMET"],
+        "reason_codes_any_of": ["MANDATORY_LANGUAGE_SIGNAL"]
+      }
+    },
+    {
+      "id": "control-chandler-backend",
+      "title": "Backend Software Engineer",
+      "company": "Desert Systems",
+      "location_text": "Chandler, AZ",
+      "work_arrangement": "hybrid",
+      "salary_min": 125000,
+      "salary_max": 155000,
+      "salary_period": "year",
+      "description_snippet": "Build Java/Spring Boot services and REST APIs.",
+      "expect": {
+        "surfaces": true,
+        "reason_codes_any_of": ["TARGET_SOFTWARE_ROLE", "CHANDLER", "LOCAL_HYBRID"]
+      }
+    },
+    {
+      "id": "control-phoenix-java",
+      "title": "Java Software Engineer",
+      "company": "Valley Platform",
+      "location_text": "Phoenix, AZ",
+      "work_arrangement": "hybrid",
+      "salary_min": 120000,
+      "salary_max": 145000,
+      "salary_period": "year",
+      "description_snippet": "Java backend services for product teams.",
+      "expect": {
+        "surfaces": true,
+        "reason_codes_any_of": ["TARGET_SOFTWARE_ROLE", "PHOENIX_METRO", "LOCAL_HYBRID", "JAVA_SIGNAL"]
+      }
+    },
+    {
+      "id": "control-us-remote-backend",
+      "title": "Backend Engineer",
+      "company": "Cloud Harbor",
+      "location_text": "Remote - US",
+      "work_arrangement": "remote",
+      "salary_min": 130000,
+      "salary_max": 160000,
+      "salary_period": "year",
+      "description_snippet": "Remote backend Java/Kotlin services.",
+      "expect": {
+        "surfaces": true,
+        "reason_codes_any_of": ["TARGET_SOFTWARE_ROLE", "US_REMOTE", "BACKEND_SIGNAL"]
+      }
+    },
+    {
+      "id": "control-foreign-hybrid",
+      "title": "Backend Software Engineer",
+      "company": "Euro Cloud",
+      "location_text": "Berlin, Germany",
+      "work_arrangement": "hybrid",
+      "salary_min": 130000,
+      "salary_max": 160000,
+      "salary_period": "year",
+      "description_snippet": "Backend Java services in Berlin.",
+      "expect": {
+        "surfaces": false,
+        "filter_reason_any_of": ["FOREIGN_LOCATION"]
+      }
+    },
+    {
+      "id": "control-unknown-software",
+      "title": "Software Engineer",
+      "company": "Opaque Co",
+      "location_text": "N/A",
+      "work_arrangement": "hybrid",
+      "salary_min": null,
+      "salary_max": null,
+      "description_snippet": "General software engineering.",
+      "expect": {
+        "surfaces": false,
+        "no_local_hybrid_bonus": true,
+        "reason_codes_any_of": ["LOCATION_UNKNOWN", "HYBRID_LOCATION_UNKNOWN"]
+      }
+    }
+  ]
+}

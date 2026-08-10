@@ -22,12 +22,51 @@ def normalize_identity_key(company: str, title: str, location: str | None) -> st
     return "|".join([_norm(company), _norm(title), _norm(location or "")])
 
 
+_TRACKING_QUERY_KEYS = {
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "utm_id",
+    "gh_src",
+    # Do NOT strip gh_jid — some employers use it as the only job identifier in the URL.
+    "ref",
+    "mc_cid",
+    "mc_eid",
+    "fbclid",
+    "gclid",
+}
+
+
+def normalize_discovery_url(url: str) -> str:
+    """Canonicalize URL and drop common tracking params (never rewrite domains)."""
+    from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+    try:
+        base = canonicalize_url(url)
+    except Exception:  # noqa: BLE001
+        base = url.strip().rstrip("/")
+    parsed = urlparse(base)
+    if not parsed.query:
+        return base
+    kept = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if k.lower() not in _TRACKING_QUERY_KEYS
+    ]
+    query = urlencode(kept)
+    return urlunparse(
+        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, query, "")
+    )
+
+
 def canonical_result_url(raw: RawDiscoveryResult) -> str | None:
     url = raw.canonical_url or raw.job_url
     if not url:
         return None
     try:
-        return canonicalize_url(url)
+        return normalize_discovery_url(url)
     except Exception:  # noqa: BLE001
         return url.rstrip("/")
 
@@ -95,7 +134,7 @@ def find_prior_identity(
             if not stored:
                 continue
             try:
-                if canonicalize_url(stored) == url:
+                if normalize_discovery_url(stored) == url:
                     return row
             except Exception:  # noqa: BLE001
                 if stored.rstrip("/") == url:

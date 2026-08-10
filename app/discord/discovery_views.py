@@ -19,17 +19,32 @@ from app.schemas.discovery import DiscoveryResultStatus
 logger = logging.getLogger(__name__)
 
 _REASON_LABELS = {
+    "TARGET_SOFTWARE_ROLE": "Target software role",
     "TARGET_ROLE": "Target role",
     "BACKEND_SIGNAL": "Backend role",
+    "JAVA_SIGNAL": "Java signal",
+    "SPECIALIZED_ROLE": "Specialized engineering role",
+    "WEAK_SOFTWARE_SIGNAL": "Weak software signal",
     "DEVELOPMENT_SIGNAL": "Development role",
     "CHANDLER": "Chandler",
     "PHOENIX_METRO": "Phoenix metro",
     "PREFERRED_LOCATION": "Preferred location",
+    "LOCAL_HYBRID": "Local hybrid",
+    "LOCAL_ONSITE": "Local on-site",
     "HYBRID": "Hybrid",
+    "HYBRID_NONLOCAL": "Hybrid (outside preferred metro)",
+    "HYBRID_LOCATION_UNKNOWN": "Hybrid (location unresolved)",
     "ONSITE": "On-site",
+    "ONSITE_NONLOCAL": "On-site (outside preferred metro)",
+    "ONSITE_LOCATION_UNKNOWN": "On-site (location unresolved)",
+    "US_REMOTE": "US-eligible remote",
     "REMOTE_ACCEPTABLE": "Remote (accepted)",
+    "REMOTE_LOCATION_UNKNOWN": "Remote (location unresolved)",
     "US_ELIGIBLE": "US-eligible location",
+    "LOCATION_UNKNOWN": "Location unknown",
     "GEO_UNKNOWN": "Location unknown",
+    "NON_SOFTWARE_DEVELOPER_CONTEXT": "Non-software developer context",
+    "MANDATORY_LANGUAGE_SIGNAL": "Mandatory language signal",
     "SALARY_ABOVE_MINIMUM": "Salary above configured minimum",
     "SALARY_UNKNOWN": "Salary unknown",
     "FRESH_POSTING": "Fresh posting",
@@ -94,7 +109,10 @@ def discovery_run_status_embed(run: DiscoveryRun, *, extras: dict[str, int] | No
     embed.add_field(name="Sources", value=sources[:1024], inline=False)
     embed.add_field(name="Raw results", value=str(run.raw_result_count), inline=True)
     embed.add_field(name="Passed filters", value=str(run.filtered_result_count), inline=True)
-    embed.add_field(name="New / surfaced", value=str(run.surfaced_result_count), inline=True)
+    quality = getattr(run, "quality_result_count", None)
+    if quality is not None:
+        embed.add_field(name="Passed quality", value=str(quality), inline=True)
+    embed.add_field(name="Strong / surfaced", value=str(run.surfaced_result_count), inline=True)
     if extras:
         embed.add_field(name="Dismissed", value=str(extras.get("dismissed", 0)), inline=True)
         embed.add_field(name="Scouted", value=str(extras.get("scouted", 0)), inline=True)

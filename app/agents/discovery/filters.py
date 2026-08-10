@@ -30,6 +30,25 @@ _UNRELATED_TITLE_PATTERNS = [
     r"\bproduct\s+manager\b",
     r"\brecruiter\b",
     r"\bcustomer\s+success\b",
+    r"\bbusiness\s+development\b",
+]
+
+# \"Developer\" in non-software contexts must not count as Software Developer
+_NON_SOFTWARE_DEVELOPER_CONTEXT = [
+    r"\bdeveloper\s+relations\b",
+    r"\bdeveloper\s+marketing\b",
+    r"\bdeveloper\s+gtm\b",
+    r"\bdeveloper\s+sales\b",
+    r"\bdeveloper\s+advocate\b",
+    r"\bdeveloper\s+evangelist\b",
+    r"\bdeveloper\s+experience\b",
+    r"\bdevrel\b",
+    r"\bgtm\b.*\bfinance\b",
+    r"\bfinance\b.*\bgtm\b",
+    r"\bdeveloper\s+gtm\s+finance\b",
+    r"\bdirector,?\s+developer\b",
+    r"\bmarketing\b.*\bdeveloper\b",
+    r"\bdeveloper\b.*\bmarketing\b",
 ]
 
 # People-management tracks — not IC software-development target roles
@@ -42,6 +61,9 @@ _MANAGEMENT_TITLE_PATTERNS = [
     r"\bvp\b.*\bengineering\b",
     r"\bhead\s+of\s+engineering\b",
     r"\bhead\s+of\s+software\b",
+    # Director in non-engineering contexts (e.g. Director, Developer GTM Finance)
+    r"^\s*director\b",
+    r"\bdirector,",
 ]
 
 _FRONTEND_ONLY = re.compile(
@@ -51,17 +73,31 @@ _FRONTEND_ONLY = re.compile(
 )
 _INTERNSHIP = re.compile(r"\b(intern|internship|co[- ]?op)\b", re.I)
 
-# IC software/development title families for prefers_software_development
+# Legitimate IC software titles — bare \"developer\" alone is NOT enough
 _IC_DEV_TITLE = re.compile(
     r"\b("
-    r"software\s+engineer|software\s+developer|backend|back[- ]end|"
-    r"full[- ]?stack|platform\s+engineer|application\s+engineer|"
-    r"java\s+(engineer|developer)|"
-    r"site\s+reliability|sre|"
+    r"software\s+engineer|software\s+developer|"
+    r"backend(\s+software)?\s+(engineer|developer)|back[- ]end(\s+software)?\s+(engineer|developer)|"
+    r"full[- ]?stack(\s+software)?\s+(engineer|developer)|"
+    r"platform\s+engineer|application\s+(engineer|developer)|"
+    r"java\s+(software\s+)?(engineer|developer)|"
+    r"distributed\s+systems\s+engineer|"
+    r"forward\s+deployed\s+engineer|"
+    r"site\s+reliability(\s+engineer)?|\bsre\b|"
     r"devops\s+engineer|"
-    r"api\s+engineer|"
-    r"developer"
+    r"api\s+engineer"
     r")\b",
+    re.I,
+)
+
+_LANGUAGE_SPEAKER = re.compile(
+    r"\b(hebrew|spanish|french|german|japanese|mandarin|chinese|korean|"
+    r"portuguese|arabic|russian|hindi|italian)\s+speaker\b",
+    re.I,
+)
+_LANGUAGE_COMMA = re.compile(
+    r",\s*(hebrew|spanish|french|german|japanese|mandarin|chinese|korean|"
+    r"portuguese|arabic|russian|hindi|italian)\b",
     re.I,
 )
 
@@ -105,6 +141,8 @@ def prefilter_candidate(
         }
     )
 
+    info_codes: list[str] = []
+
     # Explicit foreign hard-reject when US employment is required
     if requires_us_employment(prefs) and geo.us_work_eligible is False:
         return RankedDiscoveryCandidate(
@@ -128,6 +166,17 @@ def prefilter_candidate(
                 normalized_country=geo.normalized_country,
             )
 
+    for pattern in _NON_SOFTWARE_DEVELOPER_CONTEXT:
+        if re.search(pattern, title, re.I):
+            return RankedDiscoveryCandidate(
+                raw=adjusted,
+                filtered=True,
+                filter_reason="NON_SOFTWARE_DEVELOPER_CONTEXT",
+                us_work_eligible=geo.us_work_eligible,
+                normalized_country=geo.normalized_country,
+                reason_codes=["NON_SOFTWARE_DEVELOPER_CONTEXT"],
+            )
+
     for pattern in _UNRELATED_TITLE_PATTERNS:
         if re.search(pattern, title, re.I):
             return RankedDiscoveryCandidate(
@@ -146,6 +195,20 @@ def prefilter_candidate(
             us_work_eligible=geo.us_work_eligible,
             normalized_country=geo.normalized_country,
         )
+
+    # Mandatory language in title — reject when candidate inventory has no evidence
+    lang = _extract_mandatory_language(title)
+    if lang:
+        info_codes.append("MANDATORY_LANGUAGE_SIGNAL")
+        if not _candidate_has_language(profile, lang):
+            return RankedDiscoveryCandidate(
+                raw=adjusted,
+                filtered=True,
+                filter_reason="MANDATORY_LANGUAGE_UNMET",
+                us_work_eligible=geo.us_work_eligible,
+                normalized_country=geo.normalized_country,
+                reason_codes=info_codes,
+            )
 
     if prefs.prefers_backend is True and _FRONTEND_ONLY.search(title):
         blob = f"{title} {(adjusted.description_snippet or '').lower()}"
@@ -186,6 +249,7 @@ def prefilter_candidate(
         filtered=False,
         us_work_eligible=geo.us_work_eligible,
         normalized_country=geo.normalized_country,
+        reason_codes=info_codes,
     )
 
 
@@ -196,19 +260,40 @@ def _is_management_track(title: str, prefs: JobPreferences) -> bool:
     allowed = f"{targets} {acceptable}"
     if any(tok in allowed for tok in ("manager", "director", "head of", "vp ")):
         return False
+    # Allow "Director of Engineering" only if targeted; patterns still match otherwise
     return any(re.search(p, title, re.I) for p in _MANAGEMENT_TITLE_PATTERNS)
 
 
 def _looks_like_ic_dev_role(title: str, prefs: JobPreferences) -> bool:
-    """Cheap role-family gate — keyword families only, not semantic Scout judgment."""
+    """Cheap role-family gate — phrase families only, not bare 'developer'."""
     if _IC_DEV_TITLE.search(title):
         return True
-    # Target / acceptable role substrings
     for role in list(prefs.target_roles or []) + list(prefs.acceptable_roles or []):
         role_l = role.lower().strip()
-        if role_l and (role_l in title or any(
-            tok in title for tok in role_l.split() if len(tok) > 3
-        )):
-            # Avoid matching bare "engineer" from "Sales Engineer" (already unrelated)
+        if len(role_l) < 8:
+            continue
+        if role_l in title:
             return True
+    return False
+
+
+def _extract_mandatory_language(title: str) -> str | None:
+    m = _LANGUAGE_SPEAKER.search(title) or _LANGUAGE_COMMA.search(title)
+    if not m:
+        return None
+    return m.group(1).lower()
+
+
+def _candidate_has_language(profile: CandidateProfile, language: str) -> bool:
+    """True only when verified skill inventory lists the language (or close alias)."""
+    aliases = {
+        "chinese": {"chinese", "mandarin", "cantonese"},
+        "mandarin": {"mandarin", "chinese"},
+    }
+    wanted = aliases.get(language, {language})
+    for skill in profile.skills.languages:
+        name = (skill.name or "").lower()
+        if any(w in name for w in wanted):
+            return True
+    # Also scan notes / professional summary lightly? Prefer inventory only.
     return False

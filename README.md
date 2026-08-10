@@ -85,24 +85,32 @@ flowchart TB
 
 **Discovery finds opportunities. Scout evaluates. Human approves preparation. Resume prepares. Submission stays separately locked.**
 
-### Discovery providers (Phase 3.2)
+### Discovery providers (Phase 3.2 / 3.3)
 
 | Provider | Auth | Why selected | Limitations |
 | --- | --- | --- | --- |
-| **Greenhouse Job Board API** | None | Stable public JSON; employer `absolute_url`; optional HTML content | Requires known board tokens (no global search); not every employer |
+| **Greenhouse Job Board API** | None | Stable public JSON; employer `absolute_url`; optional HTML content | Requires known board tokens (no global search) |
+| **Lever Postings API** | None | Official public JSON; hosted + apply URLs; descriptions | Requires known site slugs |
+| **Ashby Job Postings API** | None | Official public JSON; workplace type; optional compensation | Requires known board names |
 | **Remotive public API** | None | Real remote software jobs; structured JSON | Remote-only; salary often free-text |
+| **The Muse public Jobs API** | None | Broad category + location search (Phoenix/Chandler capable) | Muse landing URLs; noisy mix — filters required |
+| **Adzuna** (optional) | `app_id` + `app_key` | Strong geo search | Free tier limits + attribution rules; off by default |
 | **Fake** | n/a | Deterministic tests | Not live |
 
-Rejected for MVP: LinkedIn/Indeed HTML scraping, CAPTCHA bypass, brittle page scraping.
+Rejected for this phase: LinkedIn/Indeed HTML scraping, CAPTCHA bypass, brittle page scraping. Workday CXS deferred (undocumented / fragile). See `docs/discovery-provider-research.md`.
 
-Config: `DISCOVERY_PROVIDER`, `DISCOVERY_GREENHOUSE_BOARDS`, `DISCOVERY_MAX_SURFACED_RESULTS`, etc. (see `.env.example`).
+Employer tenants live in `config/discovery_boards.json` (merged with env overrides). Jobs are never hardcoded.
+
+Config: `DISCOVERY_PROVIDER`, `DISCOVERY_BOARDS_PATH`, per-provider `DISCOVERY_*_ENABLED`, `DISCOVERY_MIN_SURFACE_SCORE`, etc. (see `.env.example`).
+
+**Surfacing is quality-gated:** `DISCOVERY_MAX_SURFACED_RESULTS` is a ceiling, not a fill target. Only results with `discovery_score >= DISCOVERY_MIN_SURFACE_SCORE` (default **45**) are posted. Zero strong matches is a successful run. Completion copy distinguishes zero-quality vs all-previously-seen.
 
 ### Discovery Discord flow
 
 1. `/discover` → creates `DiscoveryRun` + `AgentWorkItem(DISCOVERY, SEARCH_JOBS)` (no network in the slash handler)
 2. Worker claims work → webhook **📡 Discovery — RUNNING**
-3. Providers → filter → dedupe → rank → persist `DiscoveryResult`
-4. Webhook **COMPLETE / PARTIAL / FAILED** with real counts
+3. Providers → filter → dedupe → rank → quality threshold → cross-run seen check → persist `DiscoveryResult`
+4. Webhook **COMPLETE / PARTIAL / FAILED** with raw / hard-filter / quality / previously-seen / surfaced counts
 5. Control bot posts result cards: **VIEW JOB** · **SCOUT THIS** · **DISMISS**
 6. **SCOUT THIS** reuses existing ingestion + `ScoutPipeline` (prefers provider structured content when URL fetch is blocked)
 7. Gate 1 **APPROVE** remains mandatory before Resume

@@ -254,13 +254,17 @@ def test_remote_acceptable_and_chandler_outranks(profile):
         job_url="https://example.com/c2",
         canonical_url="https://example.com/c2",
     )
-    assert prefilter_candidate(profile, remote).filtered is False
-    assert prefilter_candidate(profile, chandler).filtered is False
-    scored_r = score_candidate(profile, RankedDiscoveryCandidate(raw=remote))
-    scored_c = score_candidate(profile, RankedDiscoveryCandidate(raw=chandler))
-    assert "REMOTE_ACCEPTABLE" in scored_r.reason_codes
+    remote_pf = prefilter_candidate(profile, remote)
+    chandler_pf = prefilter_candidate(profile, chandler)
+    assert remote_pf.filtered is False
+    assert chandler_pf.filtered is False
+    scored_r = score_candidate(profile, remote_pf)
+    scored_c = score_candidate(profile, chandler_pf)
+    assert "US_REMOTE" in scored_r.reason_codes
     assert "CHANDLER" in scored_c.reason_codes
+    assert "LOCAL_HYBRID" in scored_c.reason_codes
     assert scored_c.discovery_score > scored_r.discovery_score
+    assert scored_r.discovery_score >= _settings().discovery_min_surface_score
 
 
 def test_dedupe_url_provider_and_identity():

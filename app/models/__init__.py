@@ -2,6 +2,7 @@
 
 from app.models.approval import Approval
 from app.models.application import Application
+from app.models.discovery import DiscoveryResult, DiscoveryRun
 from app.models.job import Job, JobStatus
 from app.models.pipeline import ApplicationPipeline
 from app.models.resume_plan import ResumePlanRecord
@@ -14,6 +15,8 @@ __all__ = [
     "Application",
     "ApplicationPipeline",
     "AgentWorkItem",
+    "DiscoveryResult",
+    "DiscoveryRun",
     "Job",
     "JobStatus",
     "ResumePlanRecord",

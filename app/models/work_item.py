@@ -26,7 +26,11 @@ def utcnow() -> datetime:
 
 
 class AgentWorkItem(Base):
-    """Persisted unit of agent work. Agents communicate via these, not free-form chat."""
+    """Persisted unit of agent work. Agents communicate via these, not free-form chat.
+
+    job_id / pipeline_id are required for post-approval agents (Resume).
+    Discovery work may have null job/pipeline and set discovery_run_id instead.
+    """
 
     __tablename__ = "agent_work_items"
     __table_args__ = (
@@ -39,16 +43,22 @@ class AgentWorkItem(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(
+    job_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         ForeignKey("jobs.id"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
-    pipeline_id: Mapped[int] = mapped_column(
+    pipeline_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         ForeignKey("application_pipelines.id"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+    discovery_run_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("discovery_runs.id"),
+        nullable=True,
         index=True,
     )
     agent_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
@@ -61,8 +71,12 @@ class AgentWorkItem(Base):
     )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    input_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True)
-    output_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True)
+    input_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
+    )
+    output_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

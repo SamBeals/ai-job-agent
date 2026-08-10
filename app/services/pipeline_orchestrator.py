@@ -119,10 +119,17 @@ class PipelineOrchestrator:
             created_work_item=created_work,
         )
 
-    def on_work_item_started(self, work_item_id: int) -> ApplicationPipeline:
+    def on_work_item_started(self, work_item_id: int) -> ApplicationPipeline | None:
         item = self.work_items.get(work_item_id)
         if item is None:
             raise OrchestrationError(f"Work item {work_item_id} not found")
+
+        from app.schemas.agents import WorkItemStatus
+
+        if item.agent_type == AgentType.DISCOVERY.value:
+            self._notify_discovery_started(item)
+            return None
+
         pipeline = self.session.get(ApplicationPipeline, item.pipeline_id)
         if pipeline is None:
             raise OrchestrationError(f"Pipeline {item.pipeline_id} not found")
@@ -138,7 +145,6 @@ class PipelineOrchestrator:
 
         # Truthful: only notify after work item is RUNNING (caller claims first)
         from app.discord.agent_activity import resume_started_embeds
-        from app.schemas.agents import WorkItemStatus
 
         if item.status != WorkItemStatus.RUNNING.value:
             logger.warning(
@@ -172,6 +178,79 @@ class PipelineOrchestrator:
                 )
             )
         return pipeline
+
+    def on_discovery_completed(self, work_item_id: int, run_id: int) -> None:
+        """Notify Discovery completion. Does not create Approval/pipeline/resume work."""
+        from app.discord.agent_activity import (
+            discovery_completed_embeds,
+            discovery_failed_embeds,
+            discovery_partial_embeds,
+        )
+        from app.models.discovery import DiscoveryRun
+        from app.schemas.discovery import DiscoveryRunStatus
+
+        item = self.work_items.get(work_item_id)
+        run = self.session.get(DiscoveryRun, run_id)
+        if item is None or run is None:
+            return
+
+        if run.status == DiscoveryRunStatus.FAILED.value:
+            embeds = discovery_failed_embeds(run=run, work_item_id=item.id)
+            kind = "work_item_failed"
+            title = "DISCOVERY — FAILED"
+        elif run.status == DiscoveryRunStatus.PARTIAL.value:
+            embeds = discovery_partial_embeds(run=run, work_item_id=item.id)
+            kind = "work_item_completed"
+            title = "DISCOVERY — PARTIAL"
+        else:
+            embeds = discovery_completed_embeds(run=run, work_item_id=item.id)
+            kind = "work_item_completed"
+            title = "DISCOVERY — COMPLETE"
+
+        self._notify(
+            NotificationEvent(
+                kind=kind,
+                title=title,
+                body=embeds[0].get("description", title) if embeds else title,
+                work_item_id=item.id,
+                agent_type=AgentType.DISCOVERY.value,
+                metadata={
+                    "embeds": embeds,
+                    "discovery_run_id": run.id,
+                    "status": run.status,
+                },
+            )
+        )
+
+    def _notify_discovery_started(self, item) -> None:
+        from app.discord.agent_activity import discovery_started_embeds
+        from app.schemas.agents import WorkItemStatus
+
+        if item.status != WorkItemStatus.RUNNING.value:
+            logger.warning(
+                "discovery_started called but status=%s id=%s — skipping activity notify",
+                item.status,
+                item.id,
+            )
+            return
+        embeds = discovery_started_embeds(work_item_id=item.id, run_id=item.discovery_run_id)
+        self._notify(
+            NotificationEvent(
+                kind="work_item_started",
+                title="DISCOVERY",
+                body=(
+                    "Searching for current software engineering opportunities.\n"
+                    "Status: RUNNING"
+                ),
+                work_item_id=item.id,
+                agent_type=AgentType.DISCOVERY.value,
+                metadata={
+                    "embeds": embeds,
+                    "status": "RUNNING",
+                    "discovery_run_id": item.discovery_run_id,
+                },
+            )
+        )
 
     def on_resume_plan_completed(
         self,
@@ -247,7 +326,7 @@ class PipelineOrchestrator:
         error_message: str,
         permanent: bool = False,
         max_attempts: int = 3,
-    ) -> ApplicationPipeline:
+    ) -> ApplicationPipeline | None:
         from app.schemas.agents import WorkItemStatus as WIS
 
         item = self.work_items.mark_failed(
@@ -256,6 +335,36 @@ class PipelineOrchestrator:
             permanent=permanent,
             max_attempts=max_attempts,
         )
+
+        if item.agent_type == AgentType.DISCOVERY.value:
+            if item.status == WIS.FAILED.value:
+                from app.discord.agent_activity import discovery_failed_embeds
+                from app.models.discovery import DiscoveryRun
+                from app.schemas.discovery import DiscoveryRunStatus
+
+                run = (
+                    self.session.get(DiscoveryRun, item.discovery_run_id)
+                    if item.discovery_run_id
+                    else None
+                )
+                if run is not None and run.status == DiscoveryRunStatus.RUNNING.value:
+                    run.status = DiscoveryRunStatus.FAILED.value
+                    run.error_summary = (error_message or "")[:500]
+                    run.completed_at = datetime.now(timezone.utc)
+                    self.session.flush()
+                embeds = discovery_failed_embeds(run=run, work_item_id=item.id)
+                self._notify(
+                    NotificationEvent(
+                        kind="work_item_failed",
+                        title="DISCOVERY — FAILED",
+                        body="Discovery search failed. No fabricated results were posted.",
+                        work_item_id=item.id,
+                        agent_type=AgentType.DISCOVERY.value,
+                        metadata={"embeds": embeds, "status": "FAILED"},
+                    )
+                )
+            return None
+
         pipeline = self.session.get(ApplicationPipeline, item.pipeline_id)
         if pipeline is None:
             raise OrchestrationError(f"Pipeline {item.pipeline_id} not found")

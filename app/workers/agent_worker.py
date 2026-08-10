@@ -38,7 +38,7 @@ def process_one(*, worker_id: str, max_attempts: int) -> bool:
         work_items = WorkItemService(session)
         item = work_items.claim_next(
             worker_id=worker_id,
-            agent_types=[AgentType.RESUME],
+            agent_types=[AgentType.RESUME, AgentType.DISCOVERY],
         )
         if item is None:
             return False
@@ -84,6 +84,38 @@ def process_one(*, worker_id: str, max_attempts: int) -> bool:
                     "work_item_completed id=%s resume_plan_id=%s",
                     item.id,
                     result.resume_plan_id,
+                )
+            elif (
+                item.agent_type == AgentType.DISCOVERY.value
+                and item.task_type == WorkItemTaskType.SEARCH_JOBS.value
+            ):
+                from app.agents.discovery.agent import DiscoveryAgent, DiscoveryAgentError
+                from app.agents.discovery.factory import build_discovery_providers
+
+                agent = DiscoveryAgent(
+                    session,
+                    settings=settings,
+                    notifications=notifications,
+                    providers=build_discovery_providers(settings),
+                )
+                try:
+                    result = agent.process_work_item(item)
+                except DiscoveryAgentError as exc:
+                    raise PermanentWorkError(str(exc)) from exc
+                session.commit()
+                # Notify completion after commit so webhook failures cannot corrupt run
+                with SessionLocal() as notify_session:
+                    notify_orch = PipelineOrchestrator(
+                        notify_session,
+                        notifications=build_notification_service(settings),
+                    )
+                    notify_orch.on_discovery_completed(item.id, result.run.id)
+                    notify_session.commit()
+                logger.info(
+                    "work_item_completed id=%s discovery_run_id=%s status=%s",
+                    item.id,
+                    result.run.id,
+                    result.run.status,
                 )
             else:
                 raise PermanentWorkError(

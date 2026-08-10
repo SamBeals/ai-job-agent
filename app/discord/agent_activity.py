@@ -142,6 +142,109 @@ def resume_failed_embeds(
     ]
 
 
+def discovery_started_embeds(
+    *,
+    work_item_id: int,
+    run_id: int | None,
+) -> list[dict[str, Any]]:
+    identity = get_agent_identity(AgentType.DISCOVERY)
+    return [
+        {
+            "title": f"{identity.emoji} {identity.display_name.upper()}",
+            "description": (
+                "Searching for current software engineering opportunities.\n\n"
+                "**Priorities:**\n"
+                "• Chandler / Phoenix metro\n"
+                "• Backend / development\n"
+                "• Hybrid / on-site preferred\n"
+                "• Remote accepted\n"
+                "• $110k+ when compensation is disclosed"
+            ),
+            "color": 0x5865F2,
+            "fields": [
+                {"name": "Status", "value": "RUNNING", "inline": True},
+                {
+                    "name": "Refs",
+                    "value": f"Run #{run_id or '?'} · work item #{work_item_id}",
+                    "inline": False,
+                },
+            ],
+        }
+    ]
+
+
+def discovery_completed_embeds(*, run: Any, work_item_id: int) -> list[dict[str, Any]]:
+    identity = get_agent_identity(AgentType.DISCOVERY)
+    sources = len(run.providers_used or [])
+    return [
+        {
+            "title": f"{identity.emoji} {identity.display_name.upper()} — COMPLETE",
+            "description": (
+                "Search complete.\n\n"
+                f"**Sources searched:** {sources}\n"
+                f"**Potential jobs found:** {run.raw_result_count}\n"
+                f"**Passed initial screening:** {run.filtered_result_count}\n"
+                f"**New opportunities:** {run.surfaced_result_count}\n\n"
+                "I've posted the strongest matches below."
+            ),
+            "color": 0x57F287,
+            "fields": [
+                {"name": "Status", "value": "COMPLETE", "inline": True},
+                {
+                    "name": "Refs",
+                    "value": f"Run #{run.id} · work item #{work_item_id}",
+                    "inline": False,
+                },
+            ],
+        }
+    ]
+
+
+def discovery_partial_embeds(*, run: Any, work_item_id: int) -> list[dict[str, Any]]:
+    identity = get_agent_identity(AgentType.DISCOVERY)
+    return [
+        {
+            "title": f"{identity.emoji} {identity.display_name.upper()} — PARTIAL",
+            "description": (
+                "Search completed with one source unavailable.\n\n"
+                f"**{run.surfaced_result_count}** new opportunities found from remaining sources."
+            ),
+            "color": 0xFEE75C,
+            "fields": [
+                {"name": "Status", "value": "PARTIAL", "inline": True},
+                {
+                    "name": "Refs",
+                    "value": f"Run #{run.id} · work item #{work_item_id}",
+                    "inline": False,
+                },
+            ],
+        }
+    ]
+
+
+def discovery_failed_embeds(*, run: Any | None, work_item_id: int) -> list[dict[str, Any]]:
+    identity = get_agent_identity(AgentType.DISCOVERY)
+    run_id = getattr(run, "id", None) if run is not None else None
+    return [
+        {
+            "title": f"{identity.emoji} {identity.display_name.upper()} — FAILED",
+            "description": (
+                "Discovery search failed.\n"
+                "No fabricated results were posted."
+            ),
+            "color": 0xED4245,
+            "fields": [
+                {"name": "Status", "value": "FAILED", "inline": True},
+                {
+                    "name": "Refs",
+                    "value": f"Run #{run_id or '?'} · work item #{work_item_id}",
+                    "inline": False,
+                },
+            ],
+        }
+    ]
+
+
 def _emphasis_lines(plan: ResumePlan | None) -> list[str]:
     if plan is None:
         return []

@@ -12,7 +12,7 @@ Narrow agents cooperate through **persisted structured state** — not free-form
 | **Resume** | Build `ResumePlan` after Gate 1 approval | Implemented (plan only) |
 | **Resume Review** | Review tailored resume | Not implemented |
 | **Applicant** | Submit applications | Placeholder (Gate 2 locked) |
-| **Discovery** | Find jobs | Not implemented |
+| **Discovery** | Find jobs from preferences; light filter; Discord review | Implemented (MVP) |
 | **Tracker** | Track outcomes | Not implemented |
 
 Discord is the control room.
@@ -60,9 +60,13 @@ Preparation Approval never satisfies submission checks.
 
 ```mermaid
 flowchart TB
-  D[Discovery future]
+  P[Candidate Preferences]
+  D[📡 Discovery Agent]
+  PR[Discovery Providers]
+  F[Cheap Filtering + Dedupe + Rank]
+  DC[Discord Discovery cards\nVIEW / SCOUT THIS / DISMISS]
   S[Scout]
-  DR[Discord recommendation]
+  DR[Discord Scout recommendation]
   G1[Human Gate 1\nPreparation Approval]
   O[PipelineOrchestrator]
   W[AgentWorkItem]
@@ -72,12 +76,38 @@ flowchart TB
   G2[Human Gate 2\nSubmission Authorization]
   A[Applicant future]
 
-  D --> S --> DR --> G1 --> O --> W --> R --> RP --> RR
+  P --> D --> PR --> F --> DC -->|SCOUT THIS| S --> DR --> G1 --> O --> W --> R --> RP --> RR
   RR -.-> G2 -.-> A
   S -.->|"cannot authorize"| G1
+  D -.->|"cannot authorize"| G1
   RP -.->|"cannot satisfy"| G2
 ```
 
+**Discovery finds opportunities. Scout evaluates. Human approves preparation. Resume prepares. Submission stays separately locked.**
+
+### Discovery providers (Phase 3.2)
+
+| Provider | Auth | Why selected | Limitations |
+| --- | --- | --- | --- |
+| **Greenhouse Job Board API** | None | Stable public JSON; employer `absolute_url`; optional HTML content | Requires known board tokens (no global search); not every employer |
+| **Remotive public API** | None | Real remote software jobs; structured JSON | Remote-only; salary often free-text |
+| **Fake** | n/a | Deterministic tests | Not live |
+
+Rejected for MVP: LinkedIn/Indeed HTML scraping, CAPTCHA bypass, brittle page scraping.
+
+Config: `DISCOVERY_PROVIDER`, `DISCOVERY_GREENHOUSE_BOARDS`, `DISCOVERY_MAX_SURFACED_RESULTS`, etc. (see `.env.example`).
+
+### Discovery Discord flow
+
+1. `/discover` → creates `DiscoveryRun` + `AgentWorkItem(DISCOVERY, SEARCH_JOBS)` (no network in the slash handler)
+2. Worker claims work → webhook **📡 Discovery — RUNNING**
+3. Providers → filter → dedupe → rank → persist `DiscoveryResult`
+4. Webhook **COMPLETE / PARTIAL / FAILED** with real counts
+5. Control bot posts result cards: **VIEW JOB** · **SCOUT THIS** · **DISMISS**
+6. **SCOUT THIS** reuses existing ingestion + `ScoutPipeline` (prefers provider structured content when URL fetch is blocked)
+7. Gate 1 **APPROVE** remains mandatory before Resume
+
+`/scout-test` remains for fixtures / URL / paste.
 **Domain separation**
 
 - `Job` = opportunity (existing lifecycle statuses)
@@ -105,11 +135,13 @@ python -m app.workers.agent_worker
 
 Then in Discord:
 
-1. `/scout-test` → evaluate a job (control bot)
-2. Click **APPROVE** (Gate 1 — control bot)
-3. Worker claims Resume work → webhook posts as **Resume Agent — RUNNING**
-4. ResumePlan persists → webhook posts as **Resume Agent — COMPLETE**
-5. `/pipeline` · `/pipeline-status` · `/agents` · `/resume-plan`
+1. `/discover` → Discovery searches configured providers (worker)
+2. Review Discovery cards → optional **SCOUT THIS**
+3. Or `/scout-test` → evaluate a fixture/URL/paste
+4. Click **APPROVE** (Gate 1 — control bot)
+5. Worker claims Resume work → webhook posts as **Resume Agent — RUNNING**
+6. ResumePlan persists → webhook posts as **Resume Agent — COMPLETE**
+7. `/pipeline` · `/pipeline-status` · `/agents` · `/resume-plan` · `/discovery-status`
 
 Submission remains **LOCKED**. If the webhook URL is unset, the pipeline still runs; activity posts are skipped.
 

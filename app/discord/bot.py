@@ -48,6 +48,23 @@ class JobAgentBot(commands.Bot):
 
     async def on_ready(self) -> None:
         logger.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
+        if not getattr(self, "_discovery_poster_started", False):
+            self._discovery_poster_started = True
+            self.loop.create_task(self._discovery_result_poster())
+
+    async def _discovery_result_poster(self) -> None:
+        """Deliver SURFACED DiscoveryResult cards via the control bot (buttons need the bot)."""
+        import asyncio
+
+        await self.wait_until_ready()
+        from app.discord.discovery_views import post_pending_discovery_results
+
+        while not self.is_closed():
+            try:
+                await post_pending_discovery_results(self, self.settings)
+            except Exception:  # noqa: BLE001
+                logger.exception("discovery_result_poster_failed")
+            await asyncio.sleep(3)
 
 
 def create_bot(settings: Settings | None = None) -> JobAgentBot:
@@ -309,8 +326,78 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
         from app.services.work_item_service import WorkItemService
 
         with SessionLocal() as session:
-            counts = WorkItemService(session).counts_by_agent(AgentType.RESUME)
-            embed = agents_status_embed(counts)
+            work = WorkItemService(session)
+            resume_counts = work.counts_by_agent(AgentType.RESUME)
+            discovery_counts = work.counts_by_agent(AgentType.DISCOVERY)
+            embed = agents_status_embed(
+                resume_counts, discovery_counts=discovery_counts
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(
+        name="discover",
+        description="Queue Discovery Agent to search for current job opportunities",
+    )
+    async def discover_command(interaction: discord.Interaction) -> None:
+        from app.agents.discovery.agent import queue_discovery_run
+
+        # Do NOT search here — only persist DiscoveryRun + work item.
+        with SessionLocal() as session:
+            run, item = queue_discovery_run(session, settings=settings)
+            session.commit()
+            run_id, item_id = run.id, item.id
+
+        await interaction.response.send_message(
+            content=(
+                "📡 **DISCOVERY AGENT**\n"
+                "Job search queued.\n\n"
+                "I'll post the strongest opportunities here when the search completes.\n"
+                f"_Run #{run_id} · work item #{item_id}_"
+            ),
+            ephemeral=False,
+        )
+
+    @bot.tree.command(
+        name="discovery-status",
+        description="Show the latest Discovery run status",
+    )
+    async def discovery_status_command(interaction: discord.Interaction) -> None:
+        from sqlalchemy import func, select
+
+        from app.discord.discovery_views import discovery_run_status_embed
+        from app.models.discovery import DiscoveryResult, DiscoveryRun
+        from app.schemas.discovery import DiscoveryResultStatus
+
+        with SessionLocal() as session:
+            run = session.scalars(
+                select(DiscoveryRun).order_by(DiscoveryRun.id.desc()).limit(1)
+            ).first()
+            if run is None:
+                await interaction.response.send_message(
+                    "No Discovery runs yet. Use `/discover`.",
+                    ephemeral=True,
+                )
+                return
+            dismissed = session.scalar(
+                select(func.count())
+                .select_from(DiscoveryResult)
+                .where(DiscoveryResult.status == DiscoveryResultStatus.DISMISSED.value)
+            ) or 0
+            scouted = session.scalar(
+                select(func.count())
+                .select_from(DiscoveryResult)
+                .where(
+                    DiscoveryResult.status.in_(
+                        [
+                            DiscoveryResultStatus.SCOUT_REQUESTED.value,
+                            DiscoveryResultStatus.SCOUTED.value,
+                        ]
+                    )
+                )
+            ) or 0
+            embed = discovery_run_status_embed(
+                run, extras={"dismissed": int(dismissed), "scouted": int(scouted)}
+            )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(

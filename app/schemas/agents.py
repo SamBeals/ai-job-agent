@@ -109,6 +109,7 @@ class WorkItemStatus(str, Enum):
 
 class WorkItemTaskType(str, Enum):
     BUILD_RESUME_PLAN = "BUILD_RESUME_PLAN"
+    SEARCH_JOBS = "SEARCH_JOBS"
     # Future:
     GENERATE_RESUME_DOCUMENT = "GENERATE_RESUME_DOCUMENT"
     REVIEW_RESUME = "REVIEW_RESUME"
@@ -117,4 +118,4 @@ class WorkItemTaskType(str, Enum):
 
 
 # Agents that are operational vs informational placeholders in Discord /agents
-IMPLEMENTED_AGENTS: set[AgentType] = {AgentType.SCOUT, AgentType.RESUME}
+IMPLEMENTED_AGENTS: set[AgentType] = {AgentType.SCOUT, AgentType.RESUME, AgentType.DISCOVERY}

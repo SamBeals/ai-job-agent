@@ -230,6 +230,7 @@ def settings_public_dict(settings: Any) -> dict[str, Any]:
         "discord_bot_token",
         "discord_agent_webhook_url",
         "openai_api_key",
+        "discovery_api_key",
     }
     redacted = {}
     for key, value in data.items():

@@ -58,6 +58,7 @@ def init_db(engine_override: Engine | None = None) -> None:
     from app.models import (  # noqa: F401
         approval,
         application,
+        discovery,
         job,
         pipeline,
         resume_plan,
@@ -68,6 +69,121 @@ def init_db(engine_override: Engine | None = None) -> None:
 
     target = engine_override or engine
     Base.metadata.create_all(bind=target)
+    _migrate_sqlite_agent_work_items(target)
+
+
+def _migrate_sqlite_agent_work_items(target: Engine) -> None:
+    """Widen agent_work_items for Discovery (nullable job/pipeline + discovery_run_id).
+
+    SQLite cannot DROP NOT NULL in place — rebuild the table when needed.
+    """
+    if not str(target.url).startswith("sqlite"):
+        return
+    with target.begin() as conn:
+        rows = conn.exec_driver_sql("PRAGMA table_info(agent_work_items)").fetchall()
+        if not rows:
+            return
+        cols = {r[1]: r for r in rows}  # name -> pragma row (cid, name, type, notnull, ...)
+        needs_rebuild = False
+        if "discovery_run_id" not in cols:
+            needs_rebuild = True
+        for required_nullable in ("job_id", "pipeline_id"):
+            if required_nullable in cols and cols[required_nullable][3] == 1:
+                needs_rebuild = True
+        if not needs_rebuild:
+            return
+
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE agent_work_items_new (
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER,
+                pipeline_id INTEGER,
+                discovery_run_id INTEGER,
+                agent_type VARCHAR(50) NOT NULL,
+                task_type VARCHAR(80) NOT NULL,
+                status VARCHAR(50) NOT NULL,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT,
+                input_metadata JSON,
+                output_metadata JSON,
+                created_at DATETIME NOT NULL,
+                started_at DATETIME,
+                completed_at DATETIME,
+                failed_at DATETIME,
+                heartbeat_at DATETIME,
+                claimed_by VARCHAR(120),
+                FOREIGN KEY(job_id) REFERENCES jobs (id),
+                FOREIGN KEY(pipeline_id) REFERENCES application_pipelines (id),
+                FOREIGN KEY(discovery_run_id) REFERENCES discovery_runs (id),
+                CONSTRAINT uq_work_item_pipeline_agent_task
+                    UNIQUE (pipeline_id, agent_type, task_type)
+            )
+            """
+        )
+        # discovery_runs must exist before FK — create_all already ran
+        old_cols = [r[1] for r in rows]
+        copy_cols = [
+            c
+            for c in [
+                "id",
+                "job_id",
+                "pipeline_id",
+                "discovery_run_id",
+                "agent_type",
+                "task_type",
+                "status",
+                "attempt_count",
+                "error_message",
+                "input_metadata",
+                "output_metadata",
+                "created_at",
+                "started_at",
+                "completed_at",
+                "failed_at",
+                "heartbeat_at",
+                "claimed_by",
+            ]
+            if c in old_cols or c == "discovery_run_id"
+        ]
+        # Only copy columns that exist in old table (discovery_run_id may be new → NULL)
+        src_cols = [c for c in copy_cols if c in old_cols]
+        dst_cols = list(src_cols)
+        if "discovery_run_id" not in old_cols and "discovery_run_id" in copy_cols:
+            # omit — defaults NULL
+            pass
+        col_csv = ", ".join(src_cols)
+        conn.exec_driver_sql(
+            f"INSERT INTO agent_work_items_new ({col_csv}) "
+            f"SELECT {col_csv} FROM agent_work_items"
+        )
+        conn.exec_driver_sql("DROP TABLE agent_work_items")
+        conn.exec_driver_sql(
+            "ALTER TABLE agent_work_items_new RENAME TO agent_work_items"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_agent_work_items_job_id "
+            "ON agent_work_items (job_id)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_agent_work_items_pipeline_id "
+            "ON agent_work_items (pipeline_id)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_agent_work_items_discovery_run_id "
+            "ON agent_work_items (discovery_run_id)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_agent_work_items_agent_type "
+            "ON agent_work_items (agent_type)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_agent_work_items_status "
+            "ON agent_work_items (status)"
+        )
+        conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
 
 
 def get_session() -> Generator[Session, None, None]:

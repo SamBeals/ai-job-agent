@@ -13,6 +13,10 @@ from app.services.job_service import JobService
 
 @pytest.fixture()
 def session() -> Session:
+    # Ensure Discovery ORM tables register on Base.metadata
+    import app.models.discovery  # noqa: F401
+    import app.models.work_item  # noqa: F401
+
     engine = create_db_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)

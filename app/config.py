@@ -67,6 +67,25 @@ class Settings(BaseSettings):
     agent_worker_poll_seconds: float = 2.0
     resume_agent_version: str = "3.0.0"
 
+    # Discovery Agent (Phase 3.2)
+    # auto | fake | greenhouse | remotive | comma-separated
+    discovery_provider: str = "auto"
+    discovery_max_raw_results: int = 100
+    discovery_max_surfaced_results: int = 10
+    discovery_result_max_age_days: int = 30
+    discovery_http_timeout_seconds: float = 15.0
+    discovery_enable_remotive: bool = True
+    # Comma-separated Greenhouse board tokens (public Job Board API, no key)
+    discovery_greenhouse_boards: str = (
+        "stripe,datadog,cloudflare,gitlab,hashicorp,twilio,notion,airbnb,discord"
+    )
+    # Optional token:Company Name;token2:Other
+    discovery_greenhouse_company_names: str = (
+        "stripe:Stripe;datadog:Datadog;cloudflare:Cloudflare;gitlab:GitLab;"
+        "hashicorp:HashiCorp;twilio:Twilio;notion:Notion;airbnb:Airbnb;discord:Discord"
+    )
+    discovery_api_key: str = ""  # reserved for future paid APIs; unused by MVP providers
+
     @property
     def is_development(self) -> bool:
         return self.app_env.lower() in {"development", "dev", "local", "test"}

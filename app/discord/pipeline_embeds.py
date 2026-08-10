@@ -141,7 +141,12 @@ def pipeline_status_embed(
     return embed
 
 
-def agents_status_embed(resume_counts: dict[str, int]) -> discord.Embed:
+def agents_status_embed(
+    resume_counts: dict[str, int],
+    *,
+    discovery_counts: dict[str, int] | None = None,
+) -> discord.Embed:
+    discovery_counts = discovery_counts or {}
     embed = discord.Embed(title="AGENT STATUS", color=discord.Color.dark_teal())
     lines = [
         "🔎 **Scout** — READY",
@@ -153,7 +158,12 @@ def agents_status_embed(resume_counts: dict[str, int]) -> discord.Embed:
         ),
         "🔍 **Resume Review Agent** — NOT IMPLEMENTED",
         "🖥 **Applicant Agent** — NOT IMPLEMENTED",
-        "📡 **Discovery Agent** — NOT IMPLEMENTED",
+        (
+            f"📡 **Discovery Agent** — READY · "
+            f"{discovery_counts.get('PENDING', 0)} queued · "
+            f"{discovery_counts.get('RUNNING', 0)} running · "
+            f"{discovery_counts.get('COMPLETED', 0)} completed"
+        ),
         "📬 **Tracker Agent** — NOT IMPLEMENTED",
     ]
     embed.description = "\n".join(lines)

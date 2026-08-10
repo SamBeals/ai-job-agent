@@ -339,13 +339,20 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
         description="Queue Discovery Agent to search for current job opportunities",
     )
     async def discover_command(interaction: discord.Interaction) -> None:
-        from app.agents.discovery.agent import queue_discovery_run
+        from app.agents.discovery.agent import DiscoveryAgentError, queue_discovery_run
 
         # Do NOT search here — only persist DiscoveryRun + work item.
         with SessionLocal() as session:
-            run, item = queue_discovery_run(session, settings=settings)
-            session.commit()
-            run_id, item_id = run.id, item.id
+            try:
+                run, item = queue_discovery_run(session, settings=settings)
+                session.commit()
+                run_id, item_id = run.id, item.id
+            except DiscoveryAgentError as exc:
+                await interaction.response.send_message(
+                    content=f"📡 **DISCOVERY AGENT**\n{exc}",
+                    ephemeral=True,
+                )
+                return
 
         await interaction.response.send_message(
             content=(

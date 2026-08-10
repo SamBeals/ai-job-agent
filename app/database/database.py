@@ -70,6 +70,25 @@ def init_db(engine_override: Engine | None = None) -> None:
     target = engine_override or engine
     Base.metadata.create_all(bind=target)
     _migrate_sqlite_agent_work_items(target)
+    _migrate_sqlite_discovery_results(target)
+
+
+def _migrate_sqlite_discovery_results(target: Engine) -> None:
+    if not str(target.url).startswith("sqlite"):
+        return
+    with target.begin() as conn:
+        rows = conn.exec_driver_sql("PRAGMA table_info(discovery_results)").fetchall()
+        if not rows:
+            return
+        cols = {r[1] for r in rows}
+        if "normalized_country" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE discovery_results ADD COLUMN normalized_country VARCHAR(32)"
+            )
+        if "us_work_eligible" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE discovery_results ADD COLUMN us_work_eligible BOOLEAN"
+            )
 
 
 def _migrate_sqlite_agent_work_items(target: Engine) -> None:

@@ -173,18 +173,25 @@ def discovery_started_embeds(
     ]
 
 
-def discovery_completed_embeds(*, run: Any, work_item_id: int) -> list[dict[str, Any]]:
+def discovery_completed_embeds(
+    *,
+    run_id: int,
+    work_item_id: int,
+    sources_searched: int,
+    raw_result_count: int,
+    filtered_result_count: int,
+    surfaced_result_count: int,
+) -> list[dict[str, Any]]:
     identity = get_agent_identity(AgentType.DISCOVERY)
-    sources = len(run.providers_used or [])
     return [
         {
             "title": f"{identity.emoji} {identity.display_name.upper()} — COMPLETE",
             "description": (
                 "Search complete.\n\n"
-                f"**Sources searched:** {sources}\n"
-                f"**Potential jobs found:** {run.raw_result_count}\n"
-                f"**Passed initial screening:** {run.filtered_result_count}\n"
-                f"**New opportunities:** {run.surfaced_result_count}\n\n"
+                f"**Sources searched:** {sources_searched}\n"
+                f"**Potential jobs found:** {raw_result_count}\n"
+                f"**Passed initial screening:** {filtered_result_count}\n"
+                f"**New opportunities:** {surfaced_result_count}\n\n"
                 "I've posted the strongest matches below."
             ),
             "color": 0x57F287,
@@ -192,7 +199,7 @@ def discovery_completed_embeds(*, run: Any, work_item_id: int) -> list[dict[str,
                 {"name": "Status", "value": "COMPLETE", "inline": True},
                 {
                     "name": "Refs",
-                    "value": f"Run #{run.id} · work item #{work_item_id}",
+                    "value": f"Run #{run_id} · work item #{work_item_id}",
                     "inline": False,
                 },
             ],
@@ -200,21 +207,26 @@ def discovery_completed_embeds(*, run: Any, work_item_id: int) -> list[dict[str,
     ]
 
 
-def discovery_partial_embeds(*, run: Any, work_item_id: int) -> list[dict[str, Any]]:
+def discovery_partial_embeds(
+    *,
+    run_id: int,
+    work_item_id: int,
+    surfaced_result_count: int,
+) -> list[dict[str, Any]]:
     identity = get_agent_identity(AgentType.DISCOVERY)
     return [
         {
             "title": f"{identity.emoji} {identity.display_name.upper()} — PARTIAL",
             "description": (
                 "Search completed with one source unavailable.\n\n"
-                f"**{run.surfaced_result_count}** new opportunities found from remaining sources."
+                f"**{surfaced_result_count}** new opportunities found from remaining sources."
             ),
             "color": 0xFEE75C,
             "fields": [
                 {"name": "Status", "value": "PARTIAL", "inline": True},
                 {
                     "name": "Refs",
-                    "value": f"Run #{run.id} · work item #{work_item_id}",
+                    "value": f"Run #{run_id} · work item #{work_item_id}",
                     "inline": False,
                 },
             ],
@@ -222,9 +234,12 @@ def discovery_partial_embeds(*, run: Any, work_item_id: int) -> list[dict[str, A
     ]
 
 
-def discovery_failed_embeds(*, run: Any | None, work_item_id: int) -> list[dict[str, Any]]:
+def discovery_failed_embeds(
+    *,
+    run_id: int | None,
+    work_item_id: int,
+) -> list[dict[str, Any]]:
     identity = get_agent_identity(AgentType.DISCOVERY)
-    run_id = getattr(run, "id", None) if run is not None else None
     return [
         {
             "title": f"{identity.emoji} {identity.display_name.upper()} — FAILED",

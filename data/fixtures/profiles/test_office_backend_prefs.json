@@ -84,6 +84,7 @@
       "East Valley, Arizona"
     ],
     "relocation_allowed": null,
+    "us_employment_required": true,
     "prefers_software_development": true,
     "prefers_backend": true,
     "preferred_seniority": null,

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 
 class DiscoveryRunStatus(str, Enum):
+    QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     PARTIAL = "PARTIAL"
@@ -48,6 +49,9 @@ class RawDiscoveryResult(BaseModel):
     published_at: datetime | None = None
     discovered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
+    # Normalized by Discovery geography (optional; unknown stays null)
+    normalized_country: str | None = None
+    us_work_eligible: bool | None = None
 
 
 class DiscoveryQuery(BaseModel):
@@ -69,3 +73,5 @@ class RankedDiscoveryCandidate(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
     filtered: bool = False
     filter_reason: str | None = None
+    us_work_eligible: bool | None = None
+    normalized_country: str | None = None

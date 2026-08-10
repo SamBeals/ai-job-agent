@@ -28,6 +28,8 @@ _REASON_LABELS = {
     "HYBRID": "Hybrid",
     "ONSITE": "On-site",
     "REMOTE_ACCEPTABLE": "Remote (accepted)",
+    "US_ELIGIBLE": "US-eligible location",
+    "GEO_UNKNOWN": "Location unknown",
     "SALARY_ABOVE_MINIMUM": "Salary above configured minimum",
     "SALARY_UNKNOWN": "Salary unknown",
     "FRESH_POSTING": "Fresh posting",
@@ -238,8 +240,8 @@ class DiscoveryResultView(discord.ui.View):
 
 async def post_pending_discovery_results(bot: discord.Client, settings: Settings) -> int:
     """Post SURFACED results that have not yet been delivered to the control channel."""
-    channel_id = settings.discord_channel_id
-    if not channel_id:
+    channel_id = (settings.discord_channel_id or "").strip()
+    if not channel_id or not channel_id.isdigit():
         return 0
     channel = bot.get_channel(int(channel_id))
     if channel is None:

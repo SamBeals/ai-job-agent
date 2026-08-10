@@ -59,6 +59,13 @@ def score_candidate(
     loc_l = (raw.location_text or "").lower()
     blob = f"{title_l} {(raw.description_snippet or '').lower()}"
 
+    us_eligible = (
+        candidate.us_work_eligible
+        if candidate.us_work_eligible is not None
+        else raw.us_work_eligible
+    )
+    country = candidate.normalized_country or raw.normalized_country
+
     # Role-family alignment
     targets = [t.lower() for t in (prefs.target_roles or [])]
     if targets and any(t in title_l or title_l in t for t in targets):
@@ -80,7 +87,13 @@ def score_candidate(
         score += 12
         reasons.append("BACKEND_SIGNAL")
 
-    # Geography
+    # Geography ranking (eligibility already enforced in prefilter)
+    if us_eligible is True:
+        reasons.append("US_ELIGIBLE")
+        score += 5
+    elif us_eligible is None:
+        reasons.append("GEO_UNKNOWN")
+
     if any(c in loc_l for c in _CHANDLER):
         score += 20
         reasons.append("CHANDLER")
@@ -94,7 +107,7 @@ def score_candidate(
             score += 15
             reasons.append("PREFERRED_LOCATION")
 
-    # Work arrangement — remote acceptable; hybrid/onsite preferred rank higher
+    # Work arrangement — remote acceptable only when not known-foreign
     arrangement = (raw.work_arrangement or "").lower()
     order = [a.lower() for a in (prefs.work_arrangement_order or ["hybrid", "onsite", "remote"])]
     if arrangement == "hybrid":
@@ -103,8 +116,8 @@ def score_candidate(
     elif arrangement in {"onsite", "on-site", "on site"}:
         score += 10 if "onsite" in order[:2] else 6
         reasons.append("ONSITE")
-    elif arrangement == "remote":
-        score += 4  # acceptable but lower than local hybrid/onsite
+    elif arrangement == "remote" and us_eligible is not False:
+        score += 4
         reasons.append("REMOTE_ACCEPTABLE")
 
     # Salary when known
@@ -133,6 +146,8 @@ def score_candidate(
         discovery_score=score,
         reason_codes=reasons,
         filtered=False,
+        us_work_eligible=us_eligible,
+        normalized_country=country,
     )
 
 

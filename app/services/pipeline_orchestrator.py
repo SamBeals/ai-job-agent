@@ -194,16 +194,36 @@ class PipelineOrchestrator:
         if item is None or run is None:
             return
 
-        if run.status == DiscoveryRunStatus.FAILED.value:
-            embeds = discovery_failed_embeds(run=run, work_item_id=item.id)
+        # Snapshot primitives while Session-bound — never pass ORM into notifiers.
+        status = str(run.status)
+        sources = len(run.providers_used or [])
+        raw_count = int(run.raw_result_count)
+        filtered_count = int(run.filtered_result_count)
+        surfaced_count = int(run.surfaced_result_count)
+        rid = int(run.id)
+        wid = int(item.id)
+
+        if status == DiscoveryRunStatus.FAILED.value:
+            embeds = discovery_failed_embeds(run_id=rid, work_item_id=wid)
             kind = "work_item_failed"
             title = "DISCOVERY — FAILED"
-        elif run.status == DiscoveryRunStatus.PARTIAL.value:
-            embeds = discovery_partial_embeds(run=run, work_item_id=item.id)
+        elif status == DiscoveryRunStatus.PARTIAL.value:
+            embeds = discovery_partial_embeds(
+                run_id=rid,
+                work_item_id=wid,
+                surfaced_result_count=surfaced_count,
+            )
             kind = "work_item_completed"
             title = "DISCOVERY — PARTIAL"
         else:
-            embeds = discovery_completed_embeds(run=run, work_item_id=item.id)
+            embeds = discovery_completed_embeds(
+                run_id=rid,
+                work_item_id=wid,
+                sources_searched=sources,
+                raw_result_count=raw_count,
+                filtered_result_count=filtered_count,
+                surfaced_result_count=surfaced_count,
+            )
             kind = "work_item_completed"
             title = "DISCOVERY — COMPLETE"
 
@@ -212,12 +232,12 @@ class PipelineOrchestrator:
                 kind=kind,
                 title=title,
                 body=embeds[0].get("description", title) if embeds else title,
-                work_item_id=item.id,
+                work_item_id=wid,
                 agent_type=AgentType.DISCOVERY.value,
                 metadata={
                     "embeds": embeds,
-                    "discovery_run_id": run.id,
-                    "status": run.status,
+                    "discovery_run_id": rid,
+                    "status": status,
                 },
             )
         )
@@ -226,14 +246,23 @@ class PipelineOrchestrator:
         from app.discord.agent_activity import discovery_started_embeds
         from app.schemas.agents import WorkItemStatus
 
-        if item.status != WorkItemStatus.RUNNING.value:
+        # Capture primitives immediately — do not retain ORM for notify payload.
+        work_item_id = int(item.id)
+        discovery_run_id = (
+            int(item.discovery_run_id) if item.discovery_run_id is not None else None
+        )
+        status = str(item.status)
+
+        if status != WorkItemStatus.RUNNING.value:
             logger.warning(
                 "discovery_started called but status=%s id=%s — skipping activity notify",
-                item.status,
-                item.id,
+                status,
+                work_item_id,
             )
             return
-        embeds = discovery_started_embeds(work_item_id=item.id, run_id=item.discovery_run_id)
+        embeds = discovery_started_embeds(
+            work_item_id=work_item_id, run_id=discovery_run_id
+        )
         self._notify(
             NotificationEvent(
                 kind="work_item_started",
@@ -242,12 +271,12 @@ class PipelineOrchestrator:
                     "Searching for current software engineering opportunities.\n"
                     "Status: RUNNING"
                 ),
-                work_item_id=item.id,
+                work_item_id=work_item_id,
                 agent_type=AgentType.DISCOVERY.value,
                 metadata={
                     "embeds": embeds,
                     "status": "RUNNING",
-                    "discovery_run_id": item.discovery_run_id,
+                    "discovery_run_id": discovery_run_id,
                 },
             )
         )
@@ -347,18 +376,25 @@ class PipelineOrchestrator:
                     if item.discovery_run_id
                     else None
                 )
-                if run is not None and run.status == DiscoveryRunStatus.RUNNING.value:
+                run_id = int(run.id) if run is not None else (
+                    int(item.discovery_run_id) if item.discovery_run_id else None
+                )
+                wid = int(item.id)
+                if run is not None and run.status in {
+                    DiscoveryRunStatus.RUNNING.value,
+                    DiscoveryRunStatus.QUEUED.value,
+                }:
                     run.status = DiscoveryRunStatus.FAILED.value
                     run.error_summary = (error_message or "")[:500]
                     run.completed_at = datetime.now(timezone.utc)
                     self.session.flush()
-                embeds = discovery_failed_embeds(run=run, work_item_id=item.id)
+                embeds = discovery_failed_embeds(run_id=run_id, work_item_id=wid)
                 self._notify(
                     NotificationEvent(
                         kind="work_item_failed",
                         title="DISCOVERY — FAILED",
                         body="Discovery search failed. No fabricated results were posted.",
-                        work_item_id=item.id,
+                        work_item_id=wid,
                         agent_type=AgentType.DISCOVERY.value,
                         metadata={"embeds": embeds, "status": "FAILED"},
                     )

@@ -37,6 +37,14 @@ from app.services.work_item_service import WorkItemService
 PROFILE = "data/fixtures/profiles/test_office_backend_prefs.json"
 
 
+def _surfaced_rows(session: Session, result) -> list[DiscoveryResult]:
+    return [
+        session.get(DiscoveryResult, rid)
+        for rid in result.surfaced_ids
+        if session.get(DiscoveryResult, rid) is not None
+    ]
+
+
 def _settings(**overrides) -> Settings:
     base = dict(
         candidate_profile_path=PROFILE,
@@ -120,21 +128,22 @@ def test_fake_provider_filter_rank_dedupe(session: Session, profile):
     result = agent.execute_run(run)
     session.commit()
 
-    assert result.run.raw_result_count == 8
+    assert result.raw_result_count == 8
     # low salary, frontend-only, helpdesk filtered; duplicate URL removed
-    assert result.run.filtered_result_count >= 3
-    assert result.run.surfaced_result_count >= 3
-    assert result.run.status == DiscoveryRunStatus.COMPLETED.value
+    assert result.filtered_result_count >= 3
+    assert result.surfaced_result_count >= 3
+    assert result.status == DiscoveryRunStatus.COMPLETED.value
 
-    titles = {r.title for r in result.surfaced}
-    companies = {r.company for r in result.surfaced}
+    surfaced = _surfaced_rows(session, result)
+    titles = {r.title for r in surfaced}
+    companies = {r.company for r in surfaced}
     assert "Help Desk Technician" not in titles
     assert "Budget Soft" not in companies  # below min salary
-    assert all(r.open_url for r in result.surfaced)
-    assert all(r.provider for r in result.surfaced)
+    assert all(r.open_url for r in surfaced)
+    assert all(r.provider for r in surfaced)
 
     # Chandler backend should outrank remote when both present
-    by_company = {r.company: r for r in result.surfaced}
+    by_company = {r.company: r for r in surfaced}
     if "Desert Systems" in by_company and "Cloud Harbor" in by_company:
         assert by_company["Desert Systems"].discovery_score >= by_company["Cloud Harbor"].discovery_score
 
@@ -321,8 +330,10 @@ def test_cross_run_dismissed_and_scouted_do_not_resurface(session: Session, prof
     session.flush()
     first = agent.execute_run(run1)
     session.commit()
-    assert first.surfaced
-    target = first.surfaced[0]
+    assert first.surfaced_ids
+    target = session.get(DiscoveryResult, first.surfaced_ids[0])
+    assert target is not None
+    target_external_id = target.external_id
     dismiss_discovery_result(session, target.id)
     session.commit()
 
@@ -331,12 +342,14 @@ def test_cross_run_dismissed_and_scouted_do_not_resurface(session: Session, prof
     session.flush()
     second = agent.execute_run(run2)
     session.commit()
-    ids = {r.external_id for r in second.surfaced}
-    assert target.external_id not in ids
+    ids = {r.external_id for r in _surfaced_rows(session, second)}
+    assert target_external_id not in ids
 
     # Scouted also blocked
-    if second.surfaced:
-        s = second.surfaced[0]
+    if second.surfaced_ids:
+        s = session.get(DiscoveryResult, second.surfaced_ids[0])
+        assert s is not None
+        s_external = s.external_id
         s.status = DiscoveryResultStatus.SCOUTED.value
         session.commit()
         run3 = DiscoveryRun(status=DiscoveryRunStatus.RUNNING.value)
@@ -344,7 +357,7 @@ def test_cross_run_dismissed_and_scouted_do_not_resurface(session: Session, prof
         session.flush()
         third = agent.execute_run(run3)
         session.commit()
-        assert s.external_id not in {r.external_id for r in third.surfaced}
+        assert s_external not in {r.external_id for r in _surfaced_rows(session, third)}
 
 
 def test_partial_and_failed_runs(session: Session):
@@ -385,8 +398,8 @@ def test_partial_and_failed_runs(session: Session):
     session.flush()
     result = agent.execute_run(run)
     session.commit()
-    assert result.run.status == DiscoveryRunStatus.PARTIAL.value
-    assert result.run.surfaced_result_count >= 1
+    assert result.status == DiscoveryRunStatus.PARTIAL.value
+    assert result.surfaced_result_count >= 1
 
     agent_fail = DiscoveryAgent(session, settings=settings, providers=[Boom()])
     run_f = DiscoveryRun(status=DiscoveryRunStatus.RUNNING.value)
@@ -394,9 +407,9 @@ def test_partial_and_failed_runs(session: Session):
     session.flush()
     failed = agent_fail.execute_run(run_f)
     session.commit()
-    assert failed.run.status == DiscoveryRunStatus.FAILED.value
-    assert failed.run.surfaced_result_count == 0
-    assert failed.surfaced == []
+    assert failed.status == DiscoveryRunStatus.FAILED.value
+    assert failed.surfaced_result_count == 0
+    assert failed.surfaced_ids == []
 
 
 def test_discovery_cannot_authorize(session: Session):
@@ -408,7 +421,7 @@ def test_discovery_cannot_authorize(session: Session):
     result = agent.execute_run(run)
     session.commit()
     # Perfect score still no approval / pipeline / submission
-    for row in result.surfaced:
+    for row in _surfaced_rows(session, result):
         row.discovery_score = 100
     session.commit()
 
@@ -422,7 +435,7 @@ def test_discovery_cannot_authorize(session: Session):
     ]
     assert resume_items == []
     approvals = ApprovalService(session)
-    for row in result.surfaced:
+    for row in _surfaced_rows(session, result):
         if row.job_id:
             assert approvals.can_prepare_application(row.job_id) is False
 
@@ -435,7 +448,7 @@ def test_view_job_url_and_dismiss(session: Session):
     session.flush()
     result = agent.execute_run(run)
     session.commit()
-    row = result.surfaced[0]
+    row = _surfaced_rows(session, result)[0]
     embed = discovery_result_embed(row)
     assert embed.url == row.open_url
     view = DiscoveryResultView(row.id, row.open_url)
@@ -458,7 +471,9 @@ def test_scout_this_uses_structured_content_and_existing_pipeline(
     result = agent.execute_run(run)
     session.commit()
     # Prefer the Chandler job which has description_full
-    row = next(r for r in result.surfaced if r.external_id == "fake-chandler-backend")
+    row = next(
+        r for r in _surfaced_rows(session, result) if r.external_id == "fake-chandler-backend"
+    )
 
     # Force URL ingest to fail so structured path is required
     from app.agents.scout.ingestion.models import IngestionError
@@ -544,10 +559,13 @@ def test_webhook_failure_does_not_corrupt_run(session: Session):
     orch.on_work_item_started(claimed.id)  # must not raise
     result = agent.process_work_item(claimed)
     session.commit()
-    assert result.run.status == DiscoveryRunStatus.COMPLETED.value
-    orch.on_discovery_completed(claimed.id, result.run.id)  # swallowed
-    session.refresh(result.run)
-    assert result.run.status == DiscoveryRunStatus.COMPLETED.value
+    assert result.status == DiscoveryRunStatus.COMPLETED.value
+    orch.on_discovery_completed(claimed.id, result.run_id)  # swallowed
+    run_row = session.get(DiscoveryRun, result.run_id)
+    assert run_row is not None
+    session.refresh(run_row)
+    assert run_row.status == DiscoveryRunStatus.COMPLETED.value
+    assert result.status == DiscoveryRunStatus.COMPLETED.value
 
 
 def test_agents_embed_reports_discovery_implemented():
@@ -580,11 +598,13 @@ def test_end_to_end_discover_to_scout_no_authorization(session: Session, monkeyp
     )
     exec_result = agent.process_work_item(claimed)
     session.commit()
-    orch.on_discovery_completed(claimed.id, exec_result.run.id)
+    orch.on_discovery_completed(claimed.id, exec_result.run_id)
     session.commit()
 
-    assert exec_result.run.surfaced_result_count >= 1
-    row = next(r for r in exec_result.surfaced if "backend" in r.title.lower())
+    assert exec_result.surfaced_result_count >= 1
+    row = next(
+        r for r in _surfaced_rows(session, exec_result) if "backend" in r.title.lower()
+    )
 
     outcome = scout_discovery_result(session, row.id, settings=settings)
     session.commit()
@@ -598,6 +618,16 @@ def test_end_to_end_discover_to_scout_no_authorization(session: Session, monkeyp
         i.agent_type == AgentType.RESUME.value for i in session.query(AgentWorkItem).all()
     )
     assert ApprovalService(session).can_prepare_application(outcome.job.id) is False
+
+
+def test_queue_discover_rejects_when_active(session: Session):
+    settings = _settings()
+    queue_discovery_run(session, settings=settings)
+    session.commit()
+    from app.agents.discovery.agent import DiscoveryAgentError
+
+    with pytest.raises(DiscoveryAgentError, match="Active Discovery"):
+        queue_discovery_run(session, settings=settings)
 
 
 def test_plan_query_uses_preferences(profile):
@@ -638,4 +668,4 @@ def test_exclude_results_without_url(session: Session):
     session.add(run)
     session.flush()
     result = agent.execute_run(run)
-    assert result.run.surfaced_result_count == 0
+    assert result.surfaced_result_count == 0

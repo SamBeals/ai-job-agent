@@ -45,6 +45,9 @@ class JobPreferences(BaseModel):
     acceptable_locations: list[str] | None = None
     maximum_commute: str | None = None
     relocation_allowed: bool | None = None
+    # When True, Discovery hard-rejects explicitly non-US opportunities.
+    # Null = UNKNOWN (may still infer from clear US home_location in Discovery only).
+    us_employment_required: bool | None = None
 
     # Work-focus preferences (desirability ranking; not hard filters by default)
     prefers_software_development: bool | None = None

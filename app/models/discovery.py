@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -27,7 +27,7 @@ class DiscoveryRun(Base):
     status: Mapped[str] = mapped_column(
         String(40),
         nullable=False,
-        default=DiscoveryRunStatus.RUNNING.value,
+        default=DiscoveryRunStatus.QUEUED.value,
         index=True,
     )
     providers_used: Mapped[Optional[list[Any]]] = mapped_column(
@@ -107,6 +107,8 @@ class DiscoveryResult(Base):
     job_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("jobs.id"), nullable=True, index=True
     )
+    normalized_country: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    us_work_eligible: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     discord_posted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

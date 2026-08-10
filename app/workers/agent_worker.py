@@ -3,8 +3,9 @@
 Run:
   python -m app.workers.agent_worker
 
-SQLite note: prefer a single worker process. Claim uses conditional UPDATE
-compatible with PostgreSQL row semantics later.
+Session rule: capture ClaimedWork primitives before closing the claim Session.
+Never access ORM attributes after commit/close. Provider network I/O for
+Discovery runs outside any open DB transaction.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import uuid
 from app.config import get_settings
 from app.database.database import SessionLocal, init_db
 from app.schemas.agents import AgentType, WorkItemTaskType
+from app.services.claimed_work import ClaimedWork
 from app.services.notifications import build_notification_service
 from app.services.pipeline_orchestrator import PipelineOrchestrator
 from app.services.work_item_service import WorkItemService
@@ -29,11 +31,26 @@ class PermanentWorkError(Exception):
     """Non-retryable failure (auth, validation, missing data)."""
 
 
+def _capture_claimed_work(item) -> ClaimedWork:
+    """Read identity fields while the ORM instance is still Session-bound."""
+    return ClaimedWork(
+        work_item_id=int(item.id),
+        agent_type=str(item.agent_type),
+        task_type=str(item.task_type),
+        job_id=int(item.job_id) if item.job_id is not None else None,
+        pipeline_id=int(item.pipeline_id) if item.pipeline_id is not None else None,
+        discovery_run_id=(
+            int(item.discovery_run_id) if item.discovery_run_id is not None else None
+        ),
+    )
+
+
 def process_one(*, worker_id: str, max_attempts: int) -> bool:
     """Claim and process one work item. Returns True if work was processed."""
     settings = get_settings()
     notifications = build_notification_service(settings)
 
+    claimed: ClaimedWork | None = None
     with SessionLocal() as session:
         work_items = WorkItemService(session)
         item = work_items.claim_next(
@@ -43,116 +60,188 @@ def process_one(*, worker_id: str, max_attempts: int) -> bool:
         if item is None:
             return False
 
+        # Capture primitives BEFORE commit/close — expire_on_commit + closed Session
+        # makes later ORM attribute access raise DetachedInstanceError.
+        claimed = _capture_claimed_work(item)
         orchestrator = PipelineOrchestrator(session, notifications=notifications)
         try:
-            orchestrator.on_work_item_started(item.id)
+            orchestrator.on_work_item_started(claimed.work_item_id)
             session.commit()
         except Exception:  # noqa: BLE001
             session.rollback()
-            logger.exception("Failed to mark work item %s started", item.id)
+            logger.exception(
+                "Failed to mark work item %s started", claimed.work_item_id
+            )
             return True
 
-    # Fresh session for agent work so notification failures after commit are safe
+    assert claimed is not None
+
+    try:
+        if (
+            claimed.agent_type == AgentType.RESUME.value
+            and claimed.task_type == WorkItemTaskType.BUILD_RESUME_PLAN.value
+        ):
+            _process_resume(claimed, settings=settings, max_attempts=max_attempts)
+        elif (
+            claimed.agent_type == AgentType.DISCOVERY.value
+            and claimed.task_type == WorkItemTaskType.SEARCH_JOBS.value
+        ):
+            _process_discovery(claimed, settings=settings, max_attempts=max_attempts)
+        else:
+            raise PermanentWorkError(
+                f"No handler for {claimed.agent_type}/{claimed.task_type}"
+            )
+    except PermanentWorkError as exc:
+        _fail_work(claimed, str(exc), permanent=True, max_attempts=max_attempts, settings=settings)
+        logger.error(
+            "work_item_permanent_failure id=%s error=%s",
+            claimed.work_item_id,
+            exc,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _fail_work(
+            claimed, str(exc), permanent=False, max_attempts=max_attempts, settings=settings
+        )
+        logger.exception("work_item_retryable_failure id=%s", claimed.work_item_id)
+
+    return True
+
+
+def _process_resume(
+    claimed: ClaimedWork,
+    *,
+    settings,
+    max_attempts: int,
+) -> None:
+    from app.agents.resume.agent import ResumeAgent, ResumeAgentError
+
     with SessionLocal() as session:
         notifications = build_notification_service(settings)
         orchestrator = PipelineOrchestrator(session, notifications=notifications)
-        work_items = WorkItemService(session)
-        item = work_items.get(item.id)
-        if item is None:
-            return True
-
+        agent = ResumeAgent(
+            session,
+            candidate_profile_path=settings.candidate_profile_path,
+            orchestrator=orchestrator,
+        )
+        work_item = WorkItemService(session).get(claimed.work_item_id)
+        if work_item is None:
+            raise PermanentWorkError(f"Work item {claimed.work_item_id} missing")
         try:
-            if (
-                item.agent_type == AgentType.RESUME.value
-                and item.task_type == WorkItemTaskType.BUILD_RESUME_PLAN.value
-            ):
-                from app.agents.resume.agent import ResumeAgent, ResumeAgentError
+            result = agent.process_work_item(work_item)
+        except ResumeAgentError as exc:
+            raise PermanentWorkError(str(exc)) from exc
+        if not result.success:
+            raise PermanentWorkError(result.message)
+        session.commit()
+        logger.info(
+            "work_item_completed id=%s resume_plan_id=%s",
+            claimed.work_item_id,
+            result.resume_plan_id,
+        )
 
-                agent = ResumeAgent(
-                    session,
-                    candidate_profile_path=settings.candidate_profile_path,
-                    orchestrator=orchestrator,
-                )
-                try:
-                    result = agent.process_work_item(item)
-                except ResumeAgentError as exc:
-                    raise PermanentWorkError(str(exc)) from exc
-                if not result.success:
-                    raise PermanentWorkError(result.message)
-                session.commit()
-                logger.info(
-                    "work_item_completed id=%s resume_plan_id=%s",
-                    item.id,
-                    result.resume_plan_id,
-                )
-            elif (
-                item.agent_type == AgentType.DISCOVERY.value
-                and item.task_type == WorkItemTaskType.SEARCH_JOBS.value
-            ):
-                from app.agents.discovery.agent import DiscoveryAgent, DiscoveryAgentError
-                from app.agents.discovery.factory import build_discovery_providers
 
-                agent = DiscoveryAgent(
-                    session,
-                    settings=settings,
-                    notifications=notifications,
-                    providers=build_discovery_providers(settings),
-                )
-                try:
-                    result = agent.process_work_item(item)
-                except DiscoveryAgentError as exc:
-                    raise PermanentWorkError(str(exc)) from exc
-                session.commit()
-                # Notify completion after commit so webhook failures cannot corrupt run
-                with SessionLocal() as notify_session:
-                    notify_orch = PipelineOrchestrator(
-                        notify_session,
-                        notifications=build_notification_service(settings),
-                    )
-                    notify_orch.on_discovery_completed(item.id, result.run.id)
-                    notify_session.commit()
-                logger.info(
-                    "work_item_completed id=%s discovery_run_id=%s status=%s",
-                    item.id,
-                    result.run.id,
-                    result.run.status,
-                )
-            else:
-                raise PermanentWorkError(
-                    f"No handler for {item.agent_type}/{item.task_type}"
-                )
-        except PermanentWorkError as exc:
-            session.rollback()
-            with SessionLocal() as fail_session:
-                fail_orch = PipelineOrchestrator(
-                    fail_session,
-                    notifications=build_notification_service(settings),
-                )
-                fail_orch.on_work_item_failed(
-                    item.id,
-                    error_message=str(exc),
-                    permanent=True,
-                    max_attempts=max_attempts,
-                )
-                fail_session.commit()
-            logger.error("work_item_permanent_failure id=%s error=%s", item.id, exc)
-        except Exception as exc:  # noqa: BLE001
-            session.rollback()
-            with SessionLocal() as fail_session:
-                fail_orch = PipelineOrchestrator(
-                    fail_session,
-                    notifications=build_notification_service(settings),
-                )
-                fail_orch.on_work_item_failed(
-                    item.id,
-                    error_message=str(exc),
-                    permanent=False,
-                    max_attempts=max_attempts,
-                )
-                fail_session.commit()
-            logger.exception("work_item_retryable_failure id=%s", item.id)
+def _process_discovery(
+    claimed: ClaimedWork,
+    *,
+    settings,
+    max_attempts: int,
+) -> None:
+    """Discovery: short DB txs around long provider I/O (no Session during network)."""
+    from app.agents.discovery.agent import (
+        DiscoveryAgent,
+        DiscoveryAgentError,
+        search_providers,
+    )
+    from app.agents.discovery.factory import build_discovery_providers
+    from app.agents.discovery.queries import plan_discovery_query
+    from app.agents.scout.profile_loader import load_candidate_profile
 
-    return True
+    if claimed.discovery_run_id is None:
+        raise PermanentWorkError(
+            f"Discovery work item {claimed.work_item_id} missing discovery_run_id"
+        )
+
+    run_id = claimed.discovery_run_id
+    work_item_id = claimed.work_item_id
+
+    profile = load_candidate_profile(settings.candidate_profile_path)
+    query = plan_discovery_query(
+        profile,
+        max_raw_results=settings.discovery_max_raw_results,
+    )
+    providers = build_discovery_providers(settings)
+    provider_names = [getattr(p, "name", type(p).__name__) for p in providers]
+
+    # Short transaction: mark run RUNNING before network
+    with SessionLocal() as session:
+        agent = DiscoveryAgent(session, settings=settings)
+        try:
+            agent.mark_run_started(run_id, query=query, provider_names=provider_names)
+            session.commit()
+        except DiscoveryAgentError as exc:
+            raise PermanentWorkError(str(exc)) from exc
+
+    # Network / provider I/O — no open Session
+    provider_outcome = search_providers(providers, query, run_id=run_id)
+
+    # Short transaction: persist results + complete work item
+    with SessionLocal() as session:
+        notifications = build_notification_service(settings)
+        agent = DiscoveryAgent(
+            session,
+            settings=settings,
+            notifications=notifications,
+        )
+        try:
+            result = agent.finalize_provider_outcome(
+                run_id,
+                work_item_id=work_item_id,
+                provider_outcome=provider_outcome,
+                profile=profile,
+            )
+        except DiscoveryAgentError as exc:
+            raise PermanentWorkError(str(exc)) from exc
+        session.commit()
+        result_run_id = result.run_id
+        result_status = result.status
+
+    # Notify after commit so webhook failures cannot roll back business state
+    with SessionLocal() as notify_session:
+        notify_orch = PipelineOrchestrator(
+            notify_session,
+            notifications=build_notification_service(settings),
+        )
+        notify_orch.on_discovery_completed(work_item_id, result_run_id)
+        notify_session.commit()
+
+    logger.info(
+        "work_item_completed id=%s discovery_run_id=%s status=%s",
+        work_item_id,
+        result_run_id,
+        result_status,
+    )
+
+
+def _fail_work(
+    claimed: ClaimedWork,
+    error_message: str,
+    *,
+    permanent: bool,
+    max_attempts: int,
+    settings,
+) -> None:
+    with SessionLocal() as fail_session:
+        fail_orch = PipelineOrchestrator(
+            fail_session,
+            notifications=build_notification_service(settings),
+        )
+        fail_orch.on_work_item_failed(
+            claimed.work_item_id,
+            error_message=error_message,
+            permanent=permanent,
+            max_attempts=max_attempts,
+        )
+        fail_session.commit()
 
 
 def run_worker(*, poll_seconds: float, max_attempts: int) -> None:

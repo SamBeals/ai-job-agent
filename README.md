@@ -108,6 +108,17 @@ Config: `DISCOVERY_PROVIDER`, `DISCOVERY_GREENHOUSE_BOARDS`, `DISCOVERY_MAX_SURF
 7. Gate 1 **APPROVE** remains mandatory before Resume
 
 `/scout-test` remains for fixtures / URL / paste.
+
+If a worker crashes leaving Discovery `RUNNING`, recover intentionally (does not reset fresh heartbeats):
+
+```bash
+python -m app.workers.recover_stale_work --older-than-minutes 5
+# or force a specific item:
+python -m app.workers.recover_stale_work --work-item-id 1 --older-than-minutes 0
+```
+
+`/discover` refuses a second queue while any Discovery work item is already `PENDING` or `RUNNING`.
+
 **Domain separation**
 
 - `Job` = opportunity (existing lifecycle statuses)

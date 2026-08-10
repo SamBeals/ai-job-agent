@@ -115,6 +115,7 @@
     "acceptable_locations": null,
     "maximum_commute": null,
     "relocation_allowed": null,
+    "us_employment_required": null,
     "prefers_software_development": null,
     "prefers_backend": null,
     "full_time_allowed": null,

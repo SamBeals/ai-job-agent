@@ -200,6 +200,52 @@ def scout_evaluation_embed(
     return embed
 
 
+def scout_decision_embed(
+    job: Job,
+    evaluation: ScoutEvaluation,
+    *,
+    scout_channel_mention: str | None = None,
+    resume_channel_mention: str | None = None,
+) -> discord.Embed:
+    """Compact control-plane decision card (APPROVE/REJECT live on the bot message)."""
+    loc_bits = [x for x in (job.location, job.remote_status) if x]
+    loc_line = " • ".join(loc_bits) if loc_bits else "Location unknown"
+    embed = discord.Embed(
+        title="Decision required",
+        description=f"**{job.company}** — {job.title}\n{loc_line}",
+        color=discord.Color.gold(),
+        url=job.job_url,
+    )
+    embed.add_field(
+        name="Qualification",
+        value=f"{evaluation.qualification_score}/100",
+        inline=True,
+    )
+    embed.add_field(
+        name="Desirability",
+        value=f"{evaluation.desirability_score}/100",
+        inline=True,
+    )
+    embed.add_field(
+        name="Recommendation",
+        value=evaluation.recommendation.value,
+        inline=True,
+    )
+    refs: list[str] = []
+    if scout_channel_mention:
+        refs.append(f"Detailed evaluation: {scout_channel_mention}")
+    if resume_channel_mention:
+        refs.append(f"After APPROVE: {resume_channel_mention}")
+    if refs:
+        embed.add_field(name="Follow the work", value="\n".join(refs), inline=False)
+    embed.set_footer(
+        text=(
+            f"Scout recommendation ≠ authorization · Gate 1 APPROVE only · job_id={job.id}"
+        )
+    )
+    return embed
+
+
 def scout_evaluation_failed_embed(*, detail: str | None = None) -> discord.Embed:
     """User-facing embed when the configured LLM evaluator fails."""
     embed = discord.Embed(

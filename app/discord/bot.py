@@ -444,12 +444,14 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
 
 def run_bot() -> None:
     """Entrypoint for running the Discord bot."""
-    from app.logging_config import configure_logging, register_secret_value
+    from app.logging_config import configure_logging
+    from app.services.notifications import register_notification_secrets
 
     configure_logging()
     settings = get_settings()
-    register_secret_value(settings.discord_agent_webhook_url)
-    register_secret_value(settings.discord_bot_token)
+    register_notification_secrets(settings)
+    from app.logging_config import register_secret_value
+
     register_secret_value(settings.openai_api_key)
     register_secret_value(settings.adzuna_app_key)
     register_secret_value(settings.discovery_adzuna_app_key)

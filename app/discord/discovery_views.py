@@ -10,6 +10,8 @@ import discord
 from app.agents.discovery.scout_bridge import dismiss_discovery_result, scout_discovery_result
 from app.config import Settings, get_settings
 from app.database.database import SessionLocal
+from app.discord.channel_router import DiscordChannelRouter, DiscordLogicalChannel
+from app.discord.delivery import publish_scout_evaluation, scout_publish_ack_text
 from app.discord.embeds import scout_evaluation_embed
 from app.discord.views import JobActionView
 from app.models.discovery import DiscoveryResult, DiscoveryRun
@@ -188,20 +190,6 @@ class DiscoveryResultView(discord.ui.View):
                     await interaction.followup.send(outcome.message, ephemeral=True)
                     return
                 assert outcome.job is not None and outcome.evaluation is not None
-                embed = scout_evaluation_embed(outcome.job, outcome.evaluation)
-                send_kwargs: dict = {
-                    "content": (
-                        "**Scout evaluation** (from Discovery)\n"
-                        "Scout recommendation is **not** authorization. "
-                        "Only **APPROVE** authorizes this exact job."
-                    ),
-                    "embed": embed,
-                    "ephemeral": True,
-                }
-                if outcome.job.status_enum == JobStatus.AWAITING_APPROVAL:
-                    send_kwargs["view"] = JobActionView(
-                        outcome.job.id, outcome.job.job_url, timeout=None
-                    )
                 if interaction.message:
                     row = session.get(DiscoveryResult, self.result_id)
                     if row:
@@ -210,6 +198,51 @@ class DiscoveryResultView(discord.ui.View):
                             view=self.disabled_view(
                                 self.result_id, row.open_url, label="SCOUTED"
                             ),
+                        )
+
+                router = DiscordChannelRouter.from_settings(settings)
+                delivery = await publish_scout_evaluation(
+                    client=interaction.client,
+                    router=router,
+                    job=outcome.job,
+                    evaluation=outcome.evaluation,
+                    settings=settings,
+                    source_note="(from Discovery)",
+                )
+                ack = scout_publish_ack_text(delivery)
+                # Fallback: if control card missing but approval needed, keep buttons
+                send_kwargs: dict = {
+                    "content": ack,
+                    "ephemeral": True,
+                }
+                if (
+                    outcome.job.status_enum == JobStatus.AWAITING_APPROVAL
+                    and not delivery.get("control_posted")
+                ):
+                    send_kwargs["embed"] = scout_evaluation_embed(
+                        outcome.job, outcome.evaluation
+                    )
+                    send_kwargs["view"] = JobActionView(
+                        outcome.job.id, outcome.job.job_url, timeout=None
+                    )
+                    send_kwargs["content"] = (
+                        f"{ack}\n\n"
+                        "Scout recommendation is **not** authorization. "
+                        "Only **APPROVE** authorizes this exact job."
+                    )
+                elif not delivery.get("scout_posted"):
+                    # No scout channel — show full eval ephemerally
+                    send_kwargs["embed"] = scout_evaluation_embed(
+                        outcome.job, outcome.evaluation
+                    )
+                    send_kwargs["content"] = (
+                        f"{ack}\n\n"
+                        "**Scout evaluation** (ephemeral — configure "
+                        "DISCORD_SCOUT_CHANNEL_ID for the Scout workspace)."
+                    )
+                    if outcome.job.status_enum == JobStatus.AWAITING_APPROVAL:
+                        send_kwargs["view"] = JobActionView(
+                            outcome.job.id, outcome.job.job_url, timeout=None
                         )
                 await interaction.followup.send(**send_kwargs)
         except Exception:  # noqa: BLE001
@@ -268,9 +301,10 @@ class DiscoveryResultView(discord.ui.View):
 
 
 async def post_pending_discovery_results(bot: discord.Client, settings: Settings) -> int:
-    """Post SURFACED results that have not yet been delivered to the control channel."""
-    channel_id = (settings.discord_channel_id or "").strip()
-    if not channel_id or not channel_id.isdigit():
+    """Post SURFACED results that have not yet been delivered to the Discovery workspace."""
+    router = DiscordChannelRouter.from_settings(settings)
+    channel_id, reason = router.resolve_channel_id(DiscordLogicalChannel.DISCOVERY)
+    if not channel_id:
         return 0
     channel = bot.get_channel(int(channel_id))
     if channel is None:
@@ -305,5 +339,11 @@ async def post_pending_discovery_results(bot: discord.Client, settings: Settings
             await channel.send(embed=embed, view=view)
             row.discord_posted_at = datetime.now(timezone.utc)
             posted += 1
+            logger.info(
+                "discord_activity_routed event_type=DISCOVERY_RESULT "
+                "logical_channel=discovery reason=%s discovery_result_id=%s",
+                reason,
+                row.id,
+            )
         session.commit()
     return posted

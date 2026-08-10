@@ -17,9 +17,21 @@ class Settings(BaseSettings):
     # Discord
     discord_bot_token: str = ""
     discord_guild_id: str = ""
+    # Legacy single-channel fallback (temporary)
     discord_channel_id: str = ""
-    # Agent activity webhook (secret) — per-AgentType username/avatar overrides
+    # Multi-channel control room (logical → snowflake)
+    discord_control_channel_id: str = ""
+    discord_discovery_channel_id: str = ""
+    discord_scout_channel_id: str = ""
+    discord_resume_channel_id: str = ""
+    discord_applications_channel_id: str = ""
+    # Legacy agent activity webhook (secret) — destination = webhook's Discord channel
     discord_agent_webhook_url: str = ""
+    # Specialized agent webhooks (secret) — one webhook per workspace channel
+    discord_discovery_webhook_url: str = ""
+    discord_scout_webhook_url: str = ""
+    discord_resume_webhook_url: str = ""
+    discord_applications_webhook_url: str = ""
     discord_webhook_timeout_seconds: float = 5.0
     scout_avatar_url: str = ""
     resume_avatar_url: str = ""

@@ -174,7 +174,12 @@ class PipelineOrchestrator:
                     pipeline_id=pipeline.id,
                     work_item_id=item.id,
                     agent_type=item.agent_type,
-                    metadata={"embeds": embeds, "status": "RUNNING"},
+                    semantic_type="RESUME_STARTED",
+                    metadata={
+                        "embeds": embeds,
+                        "status": "RUNNING",
+                        "semantic_type": "RESUME_STARTED",
+                    },
                 )
             )
         return pipeline
@@ -209,6 +214,7 @@ class PipelineOrchestrator:
             embeds = discovery_failed_embeds(run_id=rid, work_item_id=wid)
             kind = "work_item_failed"
             title = "DISCOVERY — FAILED"
+            semantic = "DISCOVERY_FAILED"
         elif status == DiscoveryRunStatus.PARTIAL.value:
             embeds = discovery_partial_embeds(
                 run_id=rid,
@@ -219,6 +225,7 @@ class PipelineOrchestrator:
             )
             kind = "work_item_completed"
             title = "DISCOVERY — PARTIAL"
+            semantic = "DISCOVERY_COMPLETED"
         else:
             embeds = discovery_completed_embeds(
                 run_id=rid,
@@ -232,6 +239,7 @@ class PipelineOrchestrator:
             )
             kind = "work_item_completed"
             title = "DISCOVERY — COMPLETE"
+            semantic = "DISCOVERY_COMPLETED"
 
         self._notify(
             NotificationEvent(
@@ -240,10 +248,12 @@ class PipelineOrchestrator:
                 body=embeds[0].get("description", title) if embeds else title,
                 work_item_id=wid,
                 agent_type=AgentType.DISCOVERY.value,
+                semantic_type=semantic,
                 metadata={
                     "embeds": embeds,
                     "discovery_run_id": rid,
                     "status": status,
+                    "semantic_type": semantic,
                 },
             )
         )
@@ -279,10 +289,12 @@ class PipelineOrchestrator:
                 ),
                 work_item_id=work_item_id,
                 agent_type=AgentType.DISCOVERY.value,
+                semantic_type="DISCOVERY_STARTED",
                 metadata={
                     "embeds": embeds,
                     "status": "RUNNING",
                     "discovery_run_id": discovery_run_id,
+                    "semantic_type": "DISCOVERY_STARTED",
                 },
             )
         )
@@ -341,10 +353,12 @@ class PipelineOrchestrator:
                 pipeline_id=pipeline.id,
                 work_item_id=item.id,
                 agent_type=item.agent_type,
+                semantic_type="RESUME_COMPLETED",
                 metadata={
                     "embeds": embeds,
                     "resume_plan_id": resume_plan_id,
                     "status": "COMPLETED",
+                    "semantic_type": "RESUME_COMPLETED",
                     "emphasis": [
                         i.text for i in (plan.priority_skills if plan else [])[:6]
                     ],
@@ -402,7 +416,12 @@ class PipelineOrchestrator:
                         body="Discovery search failed. No fabricated results were posted.",
                         work_item_id=wid,
                         agent_type=AgentType.DISCOVERY.value,
-                        metadata={"embeds": embeds, "status": "FAILED"},
+                        semantic_type="DISCOVERY_FAILED",
+                        metadata={
+                            "embeds": embeds,
+                            "status": "FAILED",
+                            "semantic_type": "DISCOVERY_FAILED",
+                        },
                     )
                 )
             return None
@@ -450,7 +469,12 @@ class PipelineOrchestrator:
                     pipeline_id=pipeline.id,
                     work_item_id=item.id,
                     agent_type=item.agent_type,
-                    metadata={"embeds": embeds, "status": "FAILED"},
+                    semantic_type="RESUME_FAILED",
+                    metadata={
+                        "embeds": embeds,
+                        "status": "FAILED",
+                        "semantic_type": "RESUME_FAILED",
+                    },
                 )
             )
         return pipeline

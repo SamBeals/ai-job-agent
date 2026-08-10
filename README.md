@@ -15,35 +15,52 @@ Narrow agents cooperate through **persisted structured state** — not free-form
 | **Discovery** | Find jobs from preferences; light filter; Discord review | Implemented (MVP) |
 | **Tracker** | Track outcomes | Not implemented |
 
-Discord is the control room.
+Discord is the multi-channel control room.
 
-## Discord architecture — one bot + one webhook
+## Discord architecture — multi-channel control room
 
 ```text
-                 Discord
-                    │
-       ┌────────────┴────────────┐
-       │                         │
-ai-job-agent bot           Agent Webhook
-CONTROL PLANE              ACTIVITY FEED
-       │                         │
-commands / buttons         dynamic identity
-approvals                  per AgentType
-/pipeline*                 (username + optional avatar)
+AI JOB AGENT
+│
+├── 🎛️ #job-control     Human ↔ system control plane (bot owns commands/buttons)
+├── 📡 #discovery       Discovery Agent workspace
+├── 🔎 #scout           Scout workspace
+├── 📝 #resume-lab      Resume Agent (+ future Reviewer) workspace
+└── 📬 #applications    Applicant + Tracker workspace (quiet until implemented)
+```
+
+```text
+Agent → NotificationService → AgentActivityEvent
+      → DiscordChannelRouter → webhook or bot transport → correct channel
 ```
 
 | Surface | Role |
 | --- | --- |
-| **Bot** | Slash commands, APPROVE/REJECT, interactive components |
-| **Webhook** (`DISCORD_AGENT_WEBHOOK_URL`) | Agent activity posts as Scout / Resume Agent / etc. |
+| **Bot** | Slash commands, APPROVE/REJECT, SCOUT THIS, Discovery result cards, Scout decision cards |
+| **Channel webhooks** | Agent lifecycle activity with per-`AgentType` username/avatar (no buttons) |
 
-Webhook usernames/avatars are **presentation identities** for real internal agents — not separate Discord applications.
+**Rules:**
 
-Interactive Scout cards with **APPROVE** stay on the real bot. Webhook messages are activity-only (no buttons).
+- Agents emit semantic activity; they do **not** know Discord channel IDs.
+- `DiscordChannelRouter` maps semantic events → logical channel → configured snowflake/webhook.
+- Webhooks are channel-bound Discord integrations — **not** separate Discord applications.
+- A legacy `DISCORD_AGENT_WEBHOOK_URL` cannot retarget to a new channel; prefer specialized webhooks.
+- Discord is presentation infrastructure, **not** source of truth. Webhook failures never roll back business state.
 
-Treat `DISCORD_AGENT_WEBHOOK_URL` as a secret (never commit, log, or expose via `/status`).
+| Env (empty placeholders only) | Purpose |
+| --- | --- |
+| `DISCORD_CONTROL_CHANNEL_ID` | `#job-control` |
+| `DISCORD_DISCOVERY_CHANNEL_ID` | `#discovery` |
+| `DISCORD_SCOUT_CHANNEL_ID` | `#scout` |
+| `DISCORD_RESUME_CHANNEL_ID` | `#resume-lab` |
+| `DISCORD_APPLICATIONS_CHANNEL_ID` | `#applications` |
+| `DISCORD_CHANNEL_ID` | Temporary legacy channel fallback |
+| `DISCORD_DISCOVERY_WEBHOOK_URL` etc. | Per-workspace activity webhooks (secrets) |
+| `DISCORD_AGENT_WEBHOOK_URL` | Legacy activity webhook fallback (secret) |
 
 Optional avatars: `SCOUT_AVATAR_URL`, `RESUME_AVATAR_URL`, `RESUME_REVIEW_AVATAR_URL`, `APPLICANT_AVATAR_URL`, `DISCOVERY_AVATAR_URL`, `TRACKER_AVATAR_URL`.
+
+Treat all webhook URLs and `DISCORD_BOT_TOKEN` as secrets (never commit, log, or expose via `/status`).
 
 ## Authorization — two human gates
 

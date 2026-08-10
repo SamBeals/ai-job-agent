@@ -265,11 +265,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true", help="Process at most one item then exit")
     args = parser.parse_args(argv)
     from app.logging_config import configure_logging, register_secret_value
+    from app.services.notifications import register_notification_secrets
 
     configure_logging()
     settings = get_settings()
-    register_secret_value(settings.discord_agent_webhook_url)
-    register_secret_value(settings.discord_bot_token)
+    register_notification_secrets(settings)
     register_secret_value(settings.openai_api_key)
     register_secret_value(settings.adzuna_app_key)
     register_secret_value(settings.discovery_adzuna_app_key)

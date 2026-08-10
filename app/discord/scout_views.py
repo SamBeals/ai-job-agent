@@ -17,6 +17,8 @@ from app.agents.scout.pipeline import ScoutEvaluationError, ScoutPipeline
 from app.agents.scout.profile_loader import CandidateProfileError, load_candidate_profile
 from app.config import Settings
 from app.database.database import SessionLocal
+from app.discord.channel_router import DiscordChannelRouter
+from app.discord.delivery import publish_scout_evaluation, scout_publish_ack_text
 from app.discord.embeds import scout_evaluation_embed, scout_evaluation_failed_embed
 from app.discord.views import JobActionView
 from app.models.job import JobStatus
@@ -201,33 +203,49 @@ async def run_scout_ingestion(
                 )
                 return
             session.refresh(result.job)
-            embed = scout_evaluation_embed(
-                result.job,
-                result.evaluation,
+            router = DiscordChannelRouter.from_settings(settings)
+            delivery = await publish_scout_evaluation(
+                client=interaction.client,
+                router=router,
+                job=result.job,
+                evaluation=result.evaluation,
+                settings=settings,
                 extraction_warnings=extraction.warnings,
                 extraction_confidence=extraction.extraction_confidence.value,
+                source_note=(
+                    f"(`{source_label}` · extraction "
+                    f"`{extraction.extraction_method.value}`)"
+                ),
             )
-            view = (
-                JobActionView(result.job.id, result.job.job_url, timeout=None)
-                if result.job.status_enum == JobStatus.AWAITING_APPROVAL
-                else None
-            )
+            ack = scout_publish_ack_text(delivery)
             send_kwargs: dict = {
                 "content": (
-                    f"**Scout evaluation** (`{source_label}`)\n"
-                    f"Extraction: `{extraction.extraction_method.value}` "
-                    f"/ confidence `{extraction.extraction_confidence.value}`\n"
+                    f"{ack}\n"
                     f"Evaluator: `{result.evaluation.evaluator_provider}` "
                     f"/ `{result.evaluation.evaluator_model or 'n/a'}`\n"
-                    f"Present to user: `{result.should_present}`\n"
-                    "Scout recommendation is **not** authorization. "
-                    "Only **APPROVE** authorizes this exact job."
+                    f"Present to user: `{result.should_present}`"
                 ),
-                "embed": embed,
                 "ephemeral": True,
             }
-            if view is not None:
-                send_kwargs["view"] = view
+            # Fallbacks when specialized channels/webhooks are not yet configured
+            if not delivery.get("scout_posted"):
+                send_kwargs["embed"] = scout_evaluation_embed(
+                    result.job,
+                    result.evaluation,
+                    extraction_warnings=extraction.warnings,
+                    extraction_confidence=extraction.extraction_confidence.value,
+                )
+            if (
+                result.job.status_enum == JobStatus.AWAITING_APPROVAL
+                and not delivery.get("control_posted")
+            ):
+                send_kwargs["view"] = JobActionView(
+                    result.job.id, result.job.job_url, timeout=None
+                )
+                send_kwargs["content"] += (
+                    "\nScout recommendation is **not** authorization. "
+                    "Only **APPROVE** authorizes this exact job."
+                )
             await interaction.followup.send(**send_kwargs)
     except IngestionError as exc:
         logger.warning("scout ingestion failed: %s", exc)

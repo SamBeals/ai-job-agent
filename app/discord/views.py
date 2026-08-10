@@ -6,8 +6,10 @@ import logging
 
 import discord
 
+from app.config import get_settings
 from app.database.database import SessionLocal
 from app.discord.embeds import job_recommendation_embed
+from app.discord.pipeline_embeds import preparation_approved_embed
 from app.services.approval_service import (
     ApprovalError,
     ApprovalNotAllowedError,
@@ -15,6 +17,8 @@ from app.services.approval_service import (
     DuplicateApprovalError,
     JobNotFoundError,
 )
+from app.services.notifications import build_notification_service
+from app.services.pipeline_orchestrator import OrchestrationError, PipelineOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,7 @@ class JobActionView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         user = interaction.user
         approved_by = f"{user.display_name} ({user.id})"
+        settings = get_settings()
 
         try:
             with SessionLocal() as session:
@@ -76,28 +81,49 @@ class JobActionView(discord.ui.View):
                     discord_message_id=str(interaction.message.id) if interaction.message else None,
                     discord_user_id=str(user.id),
                 )
+                notifications = build_notification_service(
+                    bot_token=settings.discord_bot_token,
+                    channel_id=settings.discord_channel_id,
+                )
+                orch = PipelineOrchestrator(session, notifications=notifications)
+                try:
+                    orch_result = orch.on_job_preparation_approved(self.job_id)
+                except OrchestrationError as exc:
+                    session.commit()
+                    logger.error("Orchestration failed after approve job=%s: %s", self.job_id, exc)
+                    await interaction.followup.send(
+                        f"Approved job `{self.job_id}`, but pipeline setup failed: {exc}",
+                        ephemeral=True,
+                    )
+                    return
+
                 session.commit()
                 job = result.job
+                pipeline = orch_result.pipeline
 
                 embed = job_recommendation_embed(
                     job,
-                    footer_note=f"Approved by {approved_by}",
+                    footer_note=f"Preparation approved by {approved_by}",
                 )
                 disabled_view = JobActionView.disabled_view(self.job_id, job.job_url)
 
                 if interaction.message:
                     await interaction.message.edit(embed=embed, view=disabled_view)
 
-                if result.already_approved:
-                    await interaction.followup.send(
-                        f"Job `{self.job_id}` was already approved. Buttons disabled.",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.followup.send(
-                        f"Approved job `{self.job_id}`. Authorization record persisted.",
-                        ephemeral=True,
-                    )
+                prep_embed = preparation_approved_embed(
+                    job,
+                    pipeline,
+                    work_item_id=orch_result.work_item_id,
+                    already=result.already_approved,
+                )
+                await interaction.followup.send(
+                    content=(
+                        "Preparation authorized. Resume Agent work has been queued. "
+                        "Submission remains **locked** until a separate Gate 2 approval."
+                    ),
+                    embed=prep_embed,
+                    ephemeral=True,
+                )
         except (JobNotFoundError, ApprovalNotAllowedError, DuplicateApprovalError) as exc:
             logger.warning("Approve failed for job %s: %s", self.job_id, exc)
             await interaction.followup.send(f"Cannot approve: {exc}", ephemeral=True)

@@ -141,11 +141,11 @@ class TestApprovalBoundary:
         approval_service: ApprovalService,
         session: Session,
     ) -> None:
+        """Preparation Approval is Gate 1 only — Applicant must still refuse submit."""
         job = make_job(job_service, status=JobStatus.AWAITING_APPROVAL)
         approval_service.approve_job(job.id, approved_by="tester (123)")
-        result = ApplicantAgent(session).apply_to_job(job.id)
-        assert result.job_id == job.id
-        assert "placeholder" in result.message.lower() or "Phase 1" in result.message
+        with pytest.raises(UnauthorizedApplicationError, match="SubmissionAuthorization|Gate 2|ApplicationPipeline|pipeline"):
+            ApplicantAgent(session).apply_to_job(job.id)
 
     def test_resume_agent_refuses_unapproved_job(
         self,

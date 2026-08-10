@@ -167,6 +167,11 @@ class Job(Base):
         back_populates="job",
         lazy="selectin",
     )
+    pipelines = relationship(
+        "ApplicationPipeline",
+        back_populates="job",
+        lazy="selectin",
+    )
 
     @property
     def status_enum(self) -> JobStatus:

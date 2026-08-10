@@ -1,30 +1,20 @@
 """Applicant Agent — application submission (placeholder).
 
-Eventually consumes:
-  - An authorized job (APPROVED + Approval record)
-  - Generated resume for that job
-  - application_answers.json for recurring form fields
-  - Employer application URL / ATS flow
+Gate 1 (preparation Approval) is required but NOT sufficient for submission.
+Gate 2 (SubmissionAuthorization) is required before any real submit — and is
+never created in this phase.
 
-Eventually produces:
-  - Application attempt records
-  - Status transitions: READY_TO_APPLY → APPLYING → APPLIED | NEEDS_USER | FAILED
-
-AUTHORIZATION:
-  This agent MUST call can_enter_application_pipeline(job_id) before any work.
-  Without status-approved + matching Approval record, it must refuse.
-
-Unknown form questions must eventually yield NEEDS_USER rather than guessing.
-
-Phase 1: no Playwright / browser automation or submission.
+Phase 3 foundation: no Playwright / browser automation or submission.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.pipeline import ApplicationPipeline
 from app.services.approval_service import ApprovalService
 
 
@@ -38,11 +28,11 @@ class ApplicationResult:
 
     job_id: int
     success: bool = False
-    message: str = "ApplicantAgent is a Phase 1 placeholder — no application submitted."
+    message: str = "ApplicantAgent is a placeholder — no application submitted."
 
 
 class ApplicantAgent:
-    """Navigates employer sites and submits applications for authorized jobs only."""
+    """May prepare/submit only with proper authorization gates. Currently a stub."""
 
     def __init__(
         self,
@@ -54,18 +44,33 @@ class ApplicantAgent:
         self.approval_service = ApprovalService(session)
 
     def apply_to_job(self, job_id: int) -> ApplicationResult:
-        """Placeholder apply. Explicitly checks authorization before anything else."""
-        if not self.approval_service.can_enter_application_pipeline(job_id):
+        """Refuse submission without Gate 2. Never submits in this phase."""
+        if not self.approval_service.can_prepare_application(job_id):
             raise UnauthorizedApplicationError(
-                f"Refusing to apply: job {job_id} lacks explicit approval. "
+                f"Refusing to apply: job {job_id} lacks preparation Approval. "
                 "NO APPLICATION WITHOUT EXPLICIT USER APPROVAL."
             )
 
+        pipeline = self.session.scalars(
+            select(ApplicationPipeline).where(ApplicationPipeline.job_id == job_id)
+        ).first()
+        if pipeline is None:
+            raise UnauthorizedApplicationError(
+                f"Refusing to apply: job {job_id} has no ApplicationPipeline."
+            )
+
+        if not self.approval_service.can_submit_application(pipeline.id):
+            raise UnauthorizedApplicationError(
+                f"Refusing to submit: pipeline {pipeline.id} lacks SubmissionAuthorization "
+                "(Gate 2). Preparation Approval is not sufficient."
+            )
+
+        # Unreachable in normal Phase 3 foundation flows — no Gate 2 creator exists.
         return ApplicationResult(
             job_id=job_id,
             success=False,
             message=(
-                "Authorized, but ApplicantAgent is a Phase 1 placeholder — "
-                "no browser automation or submission performed."
+                "SubmissionAuthorization present, but ApplicantAgent is still a "
+                "placeholder — no browser automation or submission performed."
             ),
         )

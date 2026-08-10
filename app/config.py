@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     )
     ingestion_extractor_version: str = "2a.5.1"
 
+    # Multi-agent pipeline (Phase 2A.7 / Phase 3 foundation)
+    agent_max_attempts: int = 3
+    agent_worker_poll_seconds: float = 2.0
+    resume_agent_version: str = "3.0.0"
+
     @property
     def is_development(self) -> bool:
         return self.app_env.lower() in {"development", "dev", "local", "test"}

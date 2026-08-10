@@ -1,0 +1,296 @@
+"""PipelineOrchestrator — structured handoffs between agents via persisted state."""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.models.job import Job, JobStatus
+from app.models.pipeline import ApplicationPipeline
+from app.schemas.agents import (
+    AgentType,
+    PipelineStatus,
+    WorkItemTaskType,
+)
+from app.services.approval_service import ApprovalService
+from app.services.notifications import NotificationEvent, NotificationService, NullNotificationService
+from app.services.work_item_service import WorkItemService
+
+logger = logging.getLogger(__name__)
+
+
+class OrchestrationError(Exception):
+    """Raised when orchestration cannot proceed safely."""
+
+
+@dataclass
+class OrchestrationResult:
+    pipeline: ApplicationPipeline
+    work_item_id: int | None
+    created_pipeline: bool
+    created_work_item: bool
+
+
+class PipelineOrchestrator:
+    """React to domain transitions; create work items; advance pipeline status.
+
+    Agents do not chat with each other — they consume structured persisted state.
+    """
+
+    def __init__(
+        self,
+        session: Session,
+        *,
+        notifications: NotificationService | None = None,
+    ) -> None:
+        self.session = session
+        self.approvals = ApprovalService(session)
+        self.work_items = WorkItemService(session)
+        self.notifications = notifications or NullNotificationService()
+
+    def _notify(self, event: NotificationEvent) -> None:
+        """Best-effort notifications — never roll back business state."""
+        try:
+            self.notifications.notify(event)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "notification_failed kind=%s job_id=%s (non-fatal)",
+                event.kind,
+                event.job_id,
+            )
+
+    def on_job_preparation_approved(self, job_id: int) -> OrchestrationResult:
+        """Gate 1 succeeded — create/reuse ApplicationPipeline + Resume work item.
+
+        Idempotent: duplicate approvals / orchestration calls reuse existing rows.
+        """
+        if not self.approvals.can_prepare_application(job_id):
+            raise OrchestrationError(
+                f"Job {job_id} lacks preparation authorization; "
+                "cannot create application pipeline"
+            )
+
+        job = self.session.get(Job, job_id)
+        if job is None:
+            raise OrchestrationError(f"Job {job_id} not found")
+
+        pipeline, created_pipeline = self._get_or_create_pipeline(job)
+        work_item, created_work = self.work_items.create_if_absent(
+            job_id=job.id,
+            pipeline_id=pipeline.id,
+            agent_type=AgentType.RESUME,
+            task_type=WorkItemTaskType.BUILD_RESUME_PLAN,
+            input_metadata={"reason": "preparation_approved"},
+        )
+        if created_work and pipeline.status == PipelineStatus.PREPARATION_QUEUED.value:
+            pipeline.current_agent = AgentType.RESUME.value
+            pipeline.updated_at = datetime.now(timezone.utc)
+            self.session.flush()
+
+        self._notify(
+            NotificationEvent(
+                kind="pipeline_created" if created_pipeline else "pipeline_reused",
+                title="APPLICATION PREPARATION APPROVED",
+                body=(
+                    f"{job.company} — {job.title}\n"
+                    f"Pipeline #{pipeline.id} "
+                    f"{'created' if created_pipeline else 'already exists'}.\n"
+                    f"Next agent: RESUME AGENT\n"
+                    f"Work item #{work_item.id}: "
+                    f"{'QUEUED' if work_item.status == 'PENDING' else work_item.status}\n\n"
+                    "This authorizes preparation only. "
+                    "Final application submission will require separate approval."
+                ),
+                job_id=job.id,
+                pipeline_id=pipeline.id,
+                work_item_id=work_item.id,
+                agent_type=AgentType.RESUME.value,
+            )
+        )
+        return OrchestrationResult(
+            pipeline=pipeline,
+            work_item_id=work_item.id,
+            created_pipeline=created_pipeline,
+            created_work_item=created_work,
+        )
+
+    def on_work_item_started(self, work_item_id: int) -> ApplicationPipeline:
+        item = self.work_items.get(work_item_id)
+        if item is None:
+            raise OrchestrationError(f"Work item {work_item_id} not found")
+        pipeline = self.session.get(ApplicationPipeline, item.pipeline_id)
+        if pipeline is None:
+            raise OrchestrationError(f"Pipeline {item.pipeline_id} not found")
+
+        job = self.session.get(Job, item.job_id)
+        if item.agent_type == AgentType.RESUME.value:
+            pipeline.status = PipelineStatus.RESUME_PLANNING.value
+            pipeline.current_agent = AgentType.RESUME.value
+            pipeline.updated_at = datetime.now(timezone.utc)
+            if job and job.status_enum == JobStatus.APPROVED:
+                job.transition_to(JobStatus.GENERATING_RESUME)
+            self.session.flush()
+
+        self._notify(
+            NotificationEvent(
+                kind="work_item_started",
+                title="RESUME AGENT",
+                body=(
+                    f"Working on: {job.company if job else '?'} — "
+                    f"{job.title if job else '?'}\n"
+                    f"Task: Build tailored resume plan\n"
+                    f"Status: RUNNING\n"
+                    f"Pipeline #{pipeline.id} · work item #{item.id}"
+                ),
+                job_id=item.job_id,
+                pipeline_id=pipeline.id,
+                work_item_id=item.id,
+                agent_type=item.agent_type,
+            )
+        )
+        return pipeline
+
+    def on_resume_plan_completed(
+        self,
+        *,
+        work_item_id: int,
+        resume_plan_id: int,
+    ) -> ApplicationPipeline:
+        item = self.work_items.mark_completed(
+            work_item_id,
+            output_metadata={"resume_plan_id": resume_plan_id},
+        )
+        pipeline = self.session.get(ApplicationPipeline, item.pipeline_id)
+        if pipeline is None:
+            raise OrchestrationError(f"Pipeline {item.pipeline_id} not found")
+        job = self.session.get(Job, item.job_id)
+
+        pipeline.status = PipelineStatus.RESUME_PLAN_READY.value
+        pipeline.current_agent = AgentType.RESUME.value
+        pipeline.updated_at = datetime.now(timezone.utc)
+        if job and job.status_enum == JobStatus.GENERATING_RESUME:
+            job.transition_to(JobStatus.RESUME_READY)
+        self.session.flush()
+
+        # Intentionally do NOT create Applicant / submission work.
+        self._notify(
+            NotificationEvent(
+                kind="work_item_completed",
+                title="RESUME AGENT — COMPLETE",
+                body=(
+                    f"{job.company if job else '?'} — {job.title if job else '?'}\n"
+                    f"Resume strategy prepared (plan #{resume_plan_id}).\n"
+                    f"Pipeline status: {pipeline.status}\n"
+                    f"Submission: LOCKED (requires separate Gate 2 authorization)."
+                ),
+                job_id=item.job_id,
+                pipeline_id=pipeline.id,
+                work_item_id=item.id,
+                agent_type=item.agent_type,
+                metadata={"resume_plan_id": resume_plan_id},
+            )
+        )
+        return pipeline
+
+    def on_work_item_failed(
+        self,
+        work_item_id: int,
+        *,
+        error_message: str,
+        permanent: bool = False,
+        max_attempts: int = 3,
+    ) -> ApplicationPipeline:
+        from app.schemas.agents import WorkItemStatus as WIS
+
+        item = self.work_items.mark_failed(
+            work_item_id,
+            error_message=error_message,
+            permanent=permanent,
+            max_attempts=max_attempts,
+        )
+        pipeline = self.session.get(ApplicationPipeline, item.pipeline_id)
+        if pipeline is None:
+            raise OrchestrationError(f"Pipeline {item.pipeline_id} not found")
+
+        if item.status == WIS.FAILED.value:
+            pipeline.status = PipelineStatus.FAILED.value
+            pipeline.error_message = error_message
+            pipeline.updated_at = datetime.now(timezone.utc)
+            job = self.session.get(Job, item.job_id)
+            if job and job.status_enum in {
+                JobStatus.APPROVED,
+                JobStatus.GENERATING_RESUME,
+            }:
+                try:
+                    job.transition_to(JobStatus.FAILED)
+                except Exception:  # noqa: BLE001
+                    logger.warning("Could not transition job %s to FAILED", item.job_id)
+            self.session.flush()
+
+        self._notify(
+            NotificationEvent(
+                kind="work_item_failed",
+                title="RESUME AGENT — FAILED",
+                body=(
+                    f"Work item #{item.id} failed.\n"
+                    f"Status: {item.status}\n"
+                    f"Error: {error_message}\n"
+                    f"Pipeline #{pipeline.id}"
+                ),
+                job_id=item.job_id,
+                pipeline_id=pipeline.id,
+                work_item_id=item.id,
+                agent_type=item.agent_type,
+            )
+        )
+        return pipeline
+
+    def get_pipeline_for_job(self, job_id: int) -> ApplicationPipeline | None:
+        stmt = select(ApplicationPipeline).where(ApplicationPipeline.job_id == job_id)
+        return self.session.scalars(stmt).first()
+
+    def list_active_pipelines(self, *, limit: int = 20) -> list[ApplicationPipeline]:
+        active = {
+            PipelineStatus.PREPARATION_QUEUED.value,
+            PipelineStatus.RESUME_PLANNING.value,
+            PipelineStatus.RESUME_PLAN_READY.value,
+            PipelineStatus.BLOCKED.value,
+        }
+        stmt = (
+            select(ApplicationPipeline)
+            .where(ApplicationPipeline.status.in_(active))
+            .order_by(ApplicationPipeline.updated_at.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(stmt).all())
+
+    def _get_or_create_pipeline(self, job: Job) -> tuple[ApplicationPipeline, bool]:
+        existing = self.get_pipeline_for_job(job.id)
+        if existing is not None:
+            return existing, False
+        approval = self.approvals.get_approval_for_job(job.id)
+        pipeline = ApplicationPipeline(
+            job_id=job.id,
+            status=PipelineStatus.PREPARATION_QUEUED.value,
+            current_agent=AgentType.RESUME.value,
+            preparation_approved_at=(
+                approval.approved_at if approval else datetime.now(timezone.utc)
+            ),
+        )
+        try:
+            with self.session.begin_nested():
+                self.session.add(pipeline)
+                self.session.flush()
+        except IntegrityError:
+            existing = self.get_pipeline_for_job(job.id)
+            if existing is None:
+                raise OrchestrationError(
+                    f"Failed to create pipeline for job {job.id}"
+                ) from None
+            return existing, False
+        return pipeline, True

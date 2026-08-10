@@ -195,6 +195,156 @@ def create_bot(settings: Settings | None = None) -> JobAgentBot:
             ephemeral=True,
         )
 
+    @bot.tree.command(name="pipeline", description="List active application pipelines")
+    async def pipeline_command(interaction: discord.Interaction) -> None:
+        from app.discord.pipeline_embeds import pipeline_list_embed
+        from app.schemas.agents import AgentType, WorkItemTaskType
+        from app.services.approval_service import ApprovalService
+        from app.services.pipeline_orchestrator import PipelineOrchestrator
+        from app.services.work_item_service import WorkItemService
+
+        with SessionLocal() as session:
+            orch = PipelineOrchestrator(session)
+            approvals = ApprovalService(session)
+            work = WorkItemService(session)
+            rows = []
+            for pipeline in orch.list_active_pipelines():
+                job = session.get(Job, pipeline.job_id)
+                if job is None:
+                    continue
+                resume = work.find_for_pipeline_task(
+                    pipeline.id, AgentType.RESUME, WorkItemTaskType.BUILD_RESUME_PLAN
+                )
+                stages = {
+                    "scout": "COMPLETE" if job.scout_evaluations else "?",
+                    "prep": "YES" if approvals.can_prepare_application(job.id) else "NO",
+                    "resume": (
+                        "COMPLETE"
+                        if resume and resume.status == "COMPLETED"
+                        else (resume.status if resume else "NOT STARTED")
+                    ),
+                    "submit": "YES" if approvals.can_submit_application(pipeline.id) else "NO",
+                }
+                rows.append((pipeline, job, stages))
+            embed = pipeline_list_embed(rows)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(
+        name="pipeline-status",
+        description="Show detailed status for a job or pipeline",
+    )
+    @app_commands.describe(
+        job_id="Job id (optional if pipeline_id given)",
+        pipeline_id="Pipeline id (optional if job_id given)",
+    )
+    async def pipeline_status_command(
+        interaction: discord.Interaction,
+        job_id: int | None = None,
+        pipeline_id: int | None = None,
+    ) -> None:
+        from app.discord.pipeline_embeds import pipeline_status_embed
+        from app.models.pipeline import ApplicationPipeline
+        from app.schemas.agents import AgentType, WorkItemTaskType
+        from app.services.approval_service import ApprovalService
+        from app.services.pipeline_orchestrator import PipelineOrchestrator
+        from app.services.work_item_service import WorkItemService
+
+        if job_id is None and pipeline_id is None:
+            await interaction.response.send_message(
+                "Provide job_id or pipeline_id.",
+                ephemeral=True,
+            )
+            return
+
+        with SessionLocal() as session:
+            orch = PipelineOrchestrator(session)
+            approvals = ApprovalService(session)
+            work = WorkItemService(session)
+            pipeline = None
+            if pipeline_id is not None:
+                pipeline = session.get(ApplicationPipeline, pipeline_id)
+            elif job_id is not None:
+                pipeline = orch.get_pipeline_for_job(job_id)
+            if pipeline is None:
+                await interaction.response.send_message(
+                    "Application pipeline not found.",
+                    ephemeral=True,
+                )
+                return
+            job = session.get(Job, pipeline.job_id)
+            if job is None:
+                await interaction.response.send_message("Job missing.", ephemeral=True)
+                return
+            approval = approvals.get_approval_for_job(job.id)
+            scout = ScoutEvaluationService(session).latest_for_job(job.id)
+            evaluation = (
+                ScoutEvaluation.model_validate(scout.evaluation_json) if scout else None
+            )
+            resume_item = work.find_for_pipeline_task(
+                pipeline.id, AgentType.RESUME, WorkItemTaskType.BUILD_RESUME_PLAN
+            )
+            from app.models.resume_plan import ResumePlanRecord
+            from sqlalchemy import select as sa_select
+
+            resume_plan = session.scalars(
+                sa_select(ResumePlanRecord)
+                .where(ResumePlanRecord.pipeline_id == pipeline.id)
+                .order_by(ResumePlanRecord.id.desc())
+            ).first()
+            embed = pipeline_status_embed(
+                pipeline=pipeline,
+                job=job,
+                approval=approval,
+                evaluation=evaluation,
+                resume_item=resume_item,
+                resume_plan=resume_plan,
+                can_submit=approvals.can_submit_application(pipeline.id),
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="agents", description="Show agent operational status")
+    async def agents_command(interaction: discord.Interaction) -> None:
+        from app.discord.pipeline_embeds import agents_status_embed
+        from app.schemas.agents import AgentType
+        from app.services.work_item_service import WorkItemService
+
+        with SessionLocal() as session:
+            counts = WorkItemService(session).counts_by_agent(AgentType.RESUME)
+            embed = agents_status_embed(counts)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(
+        name="resume-plan",
+        description="Show the ResumePlan for a job",
+    )
+    @app_commands.describe(job_id="Persisted job id")
+    async def resume_plan_command(interaction: discord.Interaction, job_id: int) -> None:
+        from app.discord.pipeline_embeds import resume_plan_embed
+        from app.models.resume_plan import ResumePlanRecord
+        from sqlalchemy import select as sa_select
+
+        with SessionLocal() as session:
+            job = session.get(Job, job_id)
+            if job is None:
+                await interaction.response.send_message(
+                    f"Job {job_id} not found.",
+                    ephemeral=True,
+                )
+                return
+            record = session.scalars(
+                sa_select(ResumePlanRecord)
+                .where(ResumePlanRecord.job_id == job_id)
+                .order_by(ResumePlanRecord.id.desc())
+            ).first()
+            if record is None:
+                await interaction.response.send_message(
+                    f"No ResumePlan for job {job_id} yet.",
+                    ephemeral=True,
+                )
+                return
+            embed = resume_plan_embed(job, record)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     return bot
 
 

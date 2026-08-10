@@ -55,7 +55,16 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 def init_db(engine_override: Engine | None = None) -> None:
     """Create all tables. Import models so metadata is populated."""
     # Import models for side-effect registration on Base.metadata
-    from app.models import approval, application, job, scout_evaluation  # noqa: F401
+    from app.models import (  # noqa: F401
+        approval,
+        application,
+        job,
+        pipeline,
+        resume_plan,
+        scout_evaluation,
+        submission_authorization,
+        work_item,
+    )
 
     target = engine_override or engine
     Base.metadata.create_all(bind=target)
